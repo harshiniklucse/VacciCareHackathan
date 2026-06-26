@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010"
+    x:Class="VacciCare_Maestro.Stage7_RiskScore"
+    xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
+    xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+    xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+    xmlns:ui="http://schemas.uipath.com/workflow/activities"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Stage 7 — No-show Risk Scoring
+       Calls Python Risk Scorer (port 8004).
+       If EscalateImmediately=True, Maestro routes to the
+       high-priority health worker queue immediately.
+       ═══════════════════════════════════════════════════════ -->
+
+  <x:Members>
+    <x:Property Name="in_CaseID"           Type="InArgument(x:String)"  />
+    <x:Property Name="in_NoShowCount"      Type="InArgument(x:Int32)"   />
+    <x:Property Name="in_RemindersSent"    Type="InArgument(x:Int32)"   />
+    <x:Property Name="in_DistanceKm"       Type="InArgument(x:Double)"  />
+    <x:Property Name="in_PrevMissedDoses"  Type="InArgument(x:Int32)"   />
+    <x:Property Name="in_IsMigrated"       Type="InArgument(x:Boolean)" />
+    <x:Property Name="in_MotherUnder20"    Type="InArgument(x:Boolean)" />
+    <x:Property Name="in_RuralFlag"        Type="InArgument(x:Boolean)" />
+    <x:Property Name="out_RiskScore"       Type="OutArgument(x:Double)" />
+    <x:Property Name="out_RiskLabel"       Type="OutArgument(x:String)" />
+    <x:Property Name="out_EscalateNow"     Type="OutArgument(x:Boolean)" />
+    <x:Property Name="out_TopFactor"       Type="OutArgument(x:String)" />
+  </x:Members>
+
+  <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
+
+  <Sequence DisplayName="Stage 7 — No-show Risk Scoring">
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"   Default='"http://localhost:8004/score"' />
+      <Variable x:TypeArguments="x:String"  Name="v_RequestBody"  Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_ResponseBody" Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_StatusCode"   Default='""' />
+      <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"    Default="0.0" />
+      <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"    Default='""' />
+      <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow"  Default="False" />
+      <Variable x:TypeArguments="x:String"  Name="v_TopFactor"    Default='""' />
+    </Sequence.Variables>
+
+    <WriteLine DisplayName="[Log] Stage 7 starting"
+        Text="['[Stage7] Scoring dropout risk for case: ' + in_CaseID]" />
+
+    <!-- STEP 1 — Build JSON request -->
+    <Assign DisplayName="Build Risk Score Request">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [String.Format("{{""child_id"":""{0}"",""no_show_count"":{1},""reminders_sent"":{2},""distance_km"":{3},""prev_missed_doses"":{4},""is_migrated"":{5},""mother_age_under_20"":{6},""rural_flag"":{7}}}",
+            in_CaseID,
+            in_NoShowCount,
+            in_RemindersSent,
+            in_DistanceKm.ToString("F1"),
+            in_PrevMissedDoses,
+            If(in_IsMigrated, "true", "false"),
+            If(in_MotherUnder20, "true", "false"),
+            If(in_RuralFlag, "true", "false"))]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <!-- STEP 2 — HTTP POST to Risk Scorer -->
+    <ui:HttpClient DisplayName="POST /score — Risk Scorer"
+        Endpoint="[v_ServiceUrl]"
+        Method="POST"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptFormat="application/json"
+        Response="[v_ResponseBody]"
+        StatusCode="[v_StatusCode]" />
+
+    <!-- STEP 3 — Parse response -->
+    <If DisplayName="Check Response OK">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode.StartsWith("2")]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="Parse risk response">
+          <Assign DisplayName="Extract RiskScore">
+            <Assign.To><OutArgument x:TypeArguments="x:Double"><VariableReference x:TypeArguments="x:Double" Variable="{x:Reference v_RiskScore}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Double">[Double.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskScore").ToString())]</InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract RiskLabel">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RiskLabel}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskLabel").ToString()]</InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract EscalateImmediately">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean"><VariableReference x:TypeArguments="x:Boolean" Variable="{x:Reference v_EscalateNow}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">[Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("EscalateImmediately").ToString())]</InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract TopRiskFactor">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_TopFactor}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TopRiskFactor").ToString()]</InArgument></Assign.Value>
+          </Assign>
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <Throw DisplayName="Throw — Risk Scorer Error">
+          <Throw.Exception>
+            <InArgument x:TypeArguments="x:Exception">
+              [New Exception("[Stage7] Risk Scorer returned HTTP " + v_StatusCode)]
+            </InArgument>
+          </Throw.Exception>
+        </Throw>
+      </If.Else>
+    </If>
+
+    <!-- STEP 4 — Log escalation decision -->
+    <If DisplayName="Log Escalation Decision">
+      <If.Condition><InArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</InArgument></If.Condition>
+      <If.Then>
+        <WriteLine DisplayName="[Log] ESCALATE NOW"
+            Text="['[Stage7] *** ESCALATE IMMEDIATELY *** ' + in_CaseID + ' | Score=' + v_RiskScore.ToString(""F2"") + ' | Factor=' + v_TopFactor]" />
+      </If.Then>
+      <If.Else>
+        <WriteLine DisplayName="[Log] Normal Risk"
+            Text="['[Stage7] Risk=' + v_RiskLabel + ' (' + v_RiskScore.ToString(""F2"") + '') | Factor=' + v_TopFactor + ' | Standard queue']" />
+      </If.Else>
+    </If>
+
+    <!-- STEP 5 — Set output arguments -->
+    <Assign DisplayName="Set out_RiskScore">
+      <Assign.To><OutArgument x:TypeArguments="x:Double"><ArgumentReference x:TypeArguments="x:Double" ArgumentName="out_RiskScore" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Double">[v_RiskScore]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_RiskLabel">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_RiskLabel" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_RiskLabel]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_EscalateNow">
+      <Assign.To><OutArgument x:TypeArguments="x:Boolean"><ArgumentReference x:TypeArguments="x:Boolean" ArgumentName="out_EscalateNow" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_TopFactor">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_TopFactor" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_TopFactor]</InArgument></Assign.Value>
+    </Assign>
+
+  </Sequence>
+</Activity>

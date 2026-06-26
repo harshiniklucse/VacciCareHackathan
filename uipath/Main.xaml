@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010"
+    x:Class="VacciCare_Maestro.Main"
+    xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
+    xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+    xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <x:Members>
+    <x:Property Name="in_CaseID"          Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildName"       Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildDOB"        Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentName"      Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentMobile"    Type="InArgument(x:String)" />
+    <x:Property Name="in_Language"        Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicName"      Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicAddress"   Type="InArgument(x:String)" />
+    <x:Property Name="in_District"        Type="InArgument(x:String)" />
+    <x:Property Name="in_StageAction"     Type="InArgument(x:String)" />
+  </x:Members>
+
+  <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
+
+  <Flowchart DisplayName="VacciCare Maestro — Main Dispatcher" sap2010:WorkflowViewState.IdRef="Flowchart_1">
+    <Flowchart.Variables>
+      <Variable x:TypeArguments="x:String"  Name="v_Action"         Default="" />
+      <Variable x:TypeArguments="x:String"  Name="v_NextVaccine"    Default="" />
+      <Variable x:TypeArguments="x:String"  Name="v_NextDueDate"    Default="" />
+      <Variable x:TypeArguments="x:String"  Name="v_MessageBody"    Default="" />
+      <Variable x:TypeArguments="x:String"  Name="v_DLTTemplateID"  Default="" />
+      <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"      Default="0.0" />
+      <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"      Default="" />
+      <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow"    Default="False" />
+      <Variable x:TypeArguments="x:String"  Name="v_CertPath"       Default="" />
+    </Flowchart.Variables>
+
+    <Flowchart.StartNode>
+      <x:Reference>nd_ReadAction</x:Reference>
+    </Flowchart.StartNode>
+
+    <!-- Node 1: Read action argument -->
+    <FlowStep x:Name="nd_ReadAction">
+      <FlowStep.Action>
+        <Assign DisplayName="Read Stage Action">
+          <Assign.To>
+            <OutArgument x:TypeArguments="x:String">
+              <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Action}" />
+            </OutArgument>
+          </Assign.To>
+          <Assign.Value>
+            <InArgument x:TypeArguments="x:String">[in_StageAction.Trim().ToUpper()]</InArgument>
+          </Assign.Value>
+        </Assign>
+      </FlowStep.Action>
+      <FlowStep.Next>
+        <x:Reference>nd_RouteStage</x:Reference>
+      </FlowStep.Next>
+    </FlowStep>
+
+    <!-- Node 2: Route to correct stage -->
+    <FlowDecision x:Name="nd_RouteStage" DisplayName="Route by Stage Action">
+      <FlowDecision.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Action = "STAGE2"]</InArgument>
+      </FlowDecision.Condition>
+      <FlowDecision.True>
+        <x:Reference>nd_Stage2</x:Reference>
+      </FlowDecision.True>
+      <FlowDecision.False>
+        <x:Reference>nd_RouteStage3</x:Reference>
+      </FlowDecision.False>
+    </FlowDecision>
+
+    <FlowDecision x:Name="nd_RouteStage3" DisplayName="Is Stage 3?">
+      <FlowDecision.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Action = "STAGE3"]</InArgument>
+      </FlowDecision.Condition>
+      <FlowDecision.True>
+        <x:Reference>nd_Stage3</x:Reference>
+      </FlowDecision.True>
+      <FlowDecision.False>
+        <x:Reference>nd_RouteStage7</x:Reference>
+      </FlowDecision.False>
+    </FlowDecision>
+
+    <FlowDecision x:Name="nd_RouteStage7" DisplayName="Is Stage 7?">
+      <FlowDecision.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Action = "STAGE7"]</InArgument>
+      </FlowDecision.Condition>
+      <FlowDecision.True>
+        <x:Reference>nd_Stage7</x:Reference>
+      </FlowDecision.True>
+      <FlowDecision.False>
+        <x:Reference>nd_Stage9</x:Reference>
+      </FlowDecision.False>
+    </FlowDecision>
+
+    <!-- Node: Stage 2 -->
+    <FlowStep x:Name="nd_Stage2">
+      <FlowStep.Action>
+        <InvokeWorkflowFile DisplayName="Stage 2 — Schedule Planning"
+            WorkflowFileName="Stage2_SchedulePlanning.xaml">
+          <InvokeWorkflowFile.InputArguments>
+            <x:Reference>in_CaseID</x:Reference>
+            <x:Reference>in_ChildDOB</x:Reference>
+          </InvokeWorkflowFile.InputArguments>
+          <InvokeWorkflowFile.OutputArguments>
+            <x:Reference>v_NextVaccine</x:Reference>
+            <x:Reference>v_NextDueDate</x:Reference>
+          </InvokeWorkflowFile.OutputArguments>
+        </InvokeWorkflowFile>
+      </FlowStep.Action>
+      <FlowStep.Next>
+        <x:Reference>nd_LogDone</x:Reference>
+      </FlowStep.Next>
+    </FlowStep>
+
+    <!-- Node: Stage 3 -->
+    <FlowStep x:Name="nd_Stage3">
+      <FlowStep.Action>
+        <InvokeWorkflowFile DisplayName="Stage 3 — Reminder Dispatch"
+            WorkflowFileName="Stage3_ReminderDispatch.xaml">
+          <InvokeWorkflowFile.InputArguments>
+            <x:Reference>in_CaseID</x:Reference>
+            <x:Reference>in_ChildName</x:Reference>
+            <x:Reference>in_ParentName</x:Reference>
+            <x:Reference>in_ParentMobile</x:Reference>
+            <x:Reference>in_ClinicName</x:Reference>
+            <x:Reference>in_ClinicAddress</x:Reference>
+            <x:Reference>in_Language</x:Reference>
+          </InvokeWorkflowFile.InputArguments>
+          <InvokeWorkflowFile.OutputArguments>
+            <x:Reference>v_MessageBody</x:Reference>
+            <x:Reference>v_DLTTemplateID</x:Reference>
+          </InvokeWorkflowFile.OutputArguments>
+        </InvokeWorkflowFile>
+      </FlowStep.Action>
+      <FlowStep.Next>
+        <x:Reference>nd_LogDone</x:Reference>
+      </FlowStep.Next>
+    </FlowStep>
+
+    <!-- Node: Stage 7 -->
+    <FlowStep x:Name="nd_Stage7">
+      <FlowStep.Action>
+        <InvokeWorkflowFile DisplayName="Stage 7 — Risk Scoring"
+            WorkflowFileName="Stage7_RiskScore.xaml">
+          <InvokeWorkflowFile.InputArguments>
+            <x:Reference>in_CaseID</x:Reference>
+          </InvokeWorkflowFile.InputArguments>
+          <InvokeWorkflowFile.OutputArguments>
+            <x:Reference>v_RiskScore</x:Reference>
+            <x:Reference>v_RiskLabel</x:Reference>
+            <x:Reference>v_EscalateNow</x:Reference>
+          </InvokeWorkflowFile.OutputArguments>
+        </InvokeWorkflowFile>
+      </FlowStep.Action>
+      <FlowStep.Next>
+        <x:Reference>nd_LogDone</x:Reference>
+      </FlowStep.Next>
+    </FlowStep>
+
+    <!-- Node: Stage 9 -->
+    <FlowStep x:Name="nd_Stage9">
+      <FlowStep.Action>
+        <InvokeWorkflowFile DisplayName="Stage 9 — Case Closure"
+            WorkflowFileName="Stage9_CaseClosure.xaml">
+          <InvokeWorkflowFile.InputArguments>
+            <x:Reference>in_CaseID</x:Reference>
+            <x:Reference>in_ChildName</x:Reference>
+            <x:Reference>in_ChildDOB</x:Reference>
+            <x:Reference>in_ParentName</x:Reference>
+            <x:Reference>in_ClinicName</x:Reference>
+            <x:Reference>in_District</x:Reference>
+          </InvokeWorkflowFile.InputArguments>
+          <InvokeWorkflowFile.OutputArguments>
+            <x:Reference>v_CertPath</x:Reference>
+          </InvokeWorkflowFile.OutputArguments>
+        </InvokeWorkflowFile>
+      </FlowStep.Action>
+      <FlowStep.Next>
+        <x:Reference>nd_LogDone</x:Reference>
+      </FlowStep.Next>
+    </FlowStep>
+
+    <!-- Node: Done -->
+    <FlowStep x:Name="nd_LogDone">
+      <FlowStep.Action>
+        <WriteLine DisplayName="Log Completion"
+            Text="['[VacciCare] ' + v_Action + ' completed for case ' + in_CaseID]" />
+      </FlowStep.Action>
+    </FlowStep>
+
+  </Flowchart>
+</Activity>

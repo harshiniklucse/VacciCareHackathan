@@ -1,0 +1,495 @@
+openapi: "3.0.3"
+info:
+  title: VacciCare Maestro — Microservices API
+  description: |
+    Six Python microservices built by Claude Code that plug into UiPath Maestro
+    as HTTP Connector activities. Import this spec into UiPath Studio via
+    Integration Service > HTTP Connector > Import OpenAPI.
+  version: "1.0.0"
+  contact:
+    name: VacciCare Maestro
+    email: support@vaccicare.in
+
+servers:
+  - url: https://api.vaccicare.internal
+    description: Internal production
+  - url: http://localhost:8000
+    description: Local development
+
+tags:
+  - name: schedule
+    description: WHO + IAP 2024 vaccine schedule builder
+  - name: migration
+    description: Family relocation detection and PHC rerouting
+  - name: reminder
+    description: Multilingual reminder message composer
+  - name: risk
+    description: Dropout risk scoring for escalation triage
+  - name: cert
+    description: Immunisation certificate generation
+
+paths:
+
+  # ── Schedule Builder ────────────────────────────────────────────────────
+  /schedule:
+    post:
+      tags: [schedule]
+      summary: Generate vaccine schedule
+      description: |
+        Builds a complete IAP 2024 schedule for a child. Handles prematurity
+        correction, maternal HBsAg+ acceleration, and catch-up scheduling.
+        Called by Maestro at Stage 2 (Schedule Planning).
+      operationId: generateSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleRequest"
+            example:
+              child_id: "CASE-2024-0001"
+              dob: "2024-01-15"
+              birth_weight_grams: 2800
+              gestation_weeks: 38
+              maternal_hbsag_positive: false
+              missed_doses: []
+      responses:
+        "200":
+          description: Complete vaccine schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleResponse"
+        "400":
+          description: Invalid input
+
+  # ── Migration Agent ─────────────────────────────────────────────────────
+  /detect-migration:
+    post:
+      tags: [migration]
+      summary: Detect family relocation from message
+      description: |
+        Uses Claude AI to parse free-text WhatsApp/SMS replies for migration
+        signals, geocodes the new address, and returns the nearest PHC.
+        Called by Maestro when processing parent reply events.
+      operationId: detectMigration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MigrationRequest"
+            example:
+              case_id: "CASE-2024-0001"
+              message: "We moved to Chennai last month, Sholinganallur area"
+              current_phc_code: "PHC-MDU-01"
+      responses:
+        "200":
+          description: Migration analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationResponse"
+
+  # ── Reminder Composer ───────────────────────────────────────────────────
+  /compose:
+    post:
+      tags: [reminder]
+      summary: Compose reminder message
+      description: |
+        Generates a DLT-compliant reminder in the parent's preferred language
+        for the specified channel. Called by Maestro Reminder Dispatch action.
+      operationId: composeReminder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComposeRequest"
+            example:
+              case_id: "CASE-2024-0001"
+              phone: "+919876543210"
+              reminder_type: "t7"
+              language: "ta"
+              channel: "whatsapp"
+              parent_name: "Priya"
+              child_name: "Arjun"
+              vaccine: "PCV 13"
+              date: "25 Jun 2026"
+              clinic: "Anaiyur PHC"
+              dose: 2
+      responses:
+        "200":
+          description: Composed message ready for dispatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComposeResponse"
+
+  # ── Risk Scorer ─────────────────────────────────────────────────────────
+  /score:
+    post:
+      tags: [risk]
+      summary: Score dropout risk
+      description: |
+        Returns 0-1 risk score and top risk factors. Maestro uses
+        EscalateImmediately to skip 48h wait for high-risk cases.
+        Called after every no-show event.
+      operationId: scoreRisk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScoreRequest"
+            example:
+              case_id: "CASE-2024-0001"
+              days_since_last_contact: 18
+              no_show_count: 2
+              reminder_response_rate: 0.3
+              distance_to_clinic_km: 12.5
+              is_rural: true
+              maternal_age: 22
+              doses_missed_so_far: 1
+              days_overdue_current: 7
+      responses:
+        "200":
+          description: Risk assessment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoreResponse"
+
+  # ── Certificate Generator ───────────────────────────────────────────────
+  /generate:
+    post:
+      tags: [cert]
+      summary: Generate immunisation certificate
+      description: |
+        Returns base64-encoded PDF with bilingual content, ABHA QR code,
+        and full vaccine record. Called at Stage 9 (Case Closure).
+      operationId: generateCertificate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CertRequest"
+      responses:
+        "200":
+          description: Certificate as base64 PDF
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertResponse"
+
+  # ── Health checks ────────────────────────────────────────────────────────
+  /schedule/health:
+    get:
+      tags: [schedule]
+      summary: Health check
+      operationId: healthSchedule
+      responses:
+        "200":
+          description: OK
+
+  /migration/health:
+    get:
+      tags: [migration]
+      summary: Health check
+      operationId: healthMigration
+      responses:
+        "200":
+          description: OK
+
+components:
+  schemas:
+
+    ScheduleRequest:
+      type: object
+      required: [child_id, dob]
+      properties:
+        child_id:
+          type: string
+        dob:
+          type: string
+          format: date
+        birth_weight_grams:
+          type: integer
+          default: 2500
+        gestation_weeks:
+          type: integer
+          default: 40
+        maternal_hbsag_positive:
+          type: boolean
+          default: false
+        missed_doses:
+          type: array
+          items:
+            type: array
+            items:
+              oneOf:
+                - type: string
+                - type: integer
+
+    ScheduleResponse:
+      type: object
+      properties:
+        ChildID:
+          type: string
+        DOB:
+          type: string
+        GeneratedOn:
+          type: string
+        CatchUpMode:
+          type: boolean
+        HighRiskFlags:
+          type: array
+          items:
+            type: string
+        TotalDoses:
+          type: integer
+        GovtDoses:
+          type: integer
+        IAPOnlyDoses:
+          type: integer
+        NextDueDate:
+          type: string
+        NextDueVaccine:
+          type: string
+        VaccineSchedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/VaccineDose"
+
+    VaccineDose:
+      type: object
+      properties:
+        vaccine:
+          type: string
+        dose_number:
+          type: integer
+        due_date:
+          type: string
+          format: date
+        due_age_label:
+          type: string
+        category:
+          type: string
+          enum: [govt, iap_recommended]
+        is_rch_tracked:
+          type: boolean
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [pending, done, missed, overdue, skipped]
+
+    MigrationRequest:
+      type: object
+      required: [case_id, message, current_phc_code]
+      properties:
+        case_id:
+          type: string
+        message:
+          type: string
+          description: Raw WhatsApp or SMS message text from parent
+        current_phc_code:
+          type: string
+
+    MigrationResponse:
+      type: object
+      properties:
+        is_migration:
+          type: boolean
+        confidence:
+          type: number
+        new_address_raw:
+          type: string
+        new_district:
+          type: string
+        new_state:
+          type: string
+        nearest_phc_code:
+          type: string
+        nearest_phc_name:
+          type: string
+        distance_km:
+          type: number
+        reasoning:
+          type: string
+        ShouldReroute:
+          type: boolean
+        RequiresManualReview:
+          type: boolean
+        CaseID:
+          type: string
+
+    ComposeRequest:
+      type: object
+      required: [case_id, phone, reminder_type, parent_name, child_name, vaccine, date, clinic]
+      properties:
+        case_id:
+          type: string
+        phone:
+          type: string
+        reminder_type:
+          type: string
+          enum: [t7, t1, noshow, reschedule, catchup]
+        language:
+          type: string
+          enum: [en, ta, hi, te, kn]
+          default: en
+        channel:
+          type: string
+          enum: [whatsapp, sms, ivr]
+          default: whatsapp
+        parent_name:
+          type: string
+        child_name:
+          type: string
+        vaccine:
+          type: string
+        date:
+          type: string
+        clinic:
+          type: string
+        dose:
+          type: integer
+          default: 1
+
+    ComposeResponse:
+      type: object
+      properties:
+        CaseID:
+          type: string
+        Phone:
+          type: string
+        Channel:
+          type: string
+        Language:
+          type: string
+        DLTTemplateID:
+          type: string
+        MessageBody:
+          type: string
+        CharacterCount:
+          type: integer
+        SMSParts:
+          type: integer
+        ReadyToSend:
+          type: boolean
+
+    ScoreRequest:
+      type: object
+      required: [case_id, days_since_last_contact, no_show_count,
+                 reminder_response_rate, distance_to_clinic_km, is_rural]
+      properties:
+        case_id:
+          type: string
+        days_since_last_contact:
+          type: integer
+        no_show_count:
+          type: integer
+        reminder_response_rate:
+          type: number
+          minimum: 0
+          maximum: 1
+        distance_to_clinic_km:
+          type: number
+        is_rural:
+          type: boolean
+        maternal_age:
+          type: integer
+          nullable: true
+        doses_missed_so_far:
+          type: integer
+          default: 0
+        days_overdue_current:
+          type: integer
+          default: 0
+
+    ScoreResponse:
+      type: object
+      properties:
+        case_id:
+          type: string
+        risk_score:
+          type: number
+          minimum: 0
+          maximum: 1
+        risk_level:
+          type: string
+          enum: [low, medium, high, critical]
+        top_factors:
+          type: array
+          items:
+            type: string
+        recommended_action:
+          type: string
+        escalate_immediately:
+          type: boolean
+
+    CertRequest:
+      type: object
+      required: [case_id, child_name, dob, gender, abha_id,
+                 father_name, mother_name, clinic_name, clinic_code, district]
+      properties:
+        case_id:
+          type: string
+        child_name:
+          type: string
+        child_name_tamil:
+          type: string
+        dob:
+          type: string
+          format: date
+        gender:
+          type: string
+          enum: [Male, Female, Other]
+        abha_id:
+          type: string
+        father_name:
+          type: string
+        mother_name:
+          type: string
+        clinic_name:
+          type: string
+        clinic_code:
+          type: string
+        district:
+          type: string
+        doses_completed:
+          type: array
+          items:
+            type: object
+            properties:
+              vaccine:
+                type: string
+              dose_number:
+                type: integer
+              date_given:
+                type: string
+              batch:
+                type: string
+              nurse_id:
+                type: string
+
+    CertResponse:
+      type: object
+      properties:
+        CaseID:
+          type: string
+        ChildName:
+          type: string
+        ABHA_ID:
+          type: string
+        IssuedDate:
+          type: string
+        PDFBase64:
+          type: string
+          description: Base64-encoded PDF bytes
+        FileSizeBytes:
+          type: integer
+        FileName:
+          type: string

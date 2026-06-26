@@ -1,0 +1,140 @@
+{
+  "CaseDefinition": {
+    "Name": "VacciCare_Case",
+    "Description": "AI-powered child vaccination follow-up case — tracks one child from registration to full immunisation",
+    "Version": "1.0"
+  },
+
+  "Schema": {
+    "Description": "These are the fields you add under the Schema tab in Maestro Case Definition",
+    "Fields": [
+      { "Name": "ChildID",           "Type": "Text",     "Required": true,  "Example": "CASE-2024-0001" },
+      { "Name": "ChildName",         "Type": "Text",     "Required": true,  "Example": "Arjun Kumar" },
+      { "Name": "DateOfBirth",       "Type": "DateTime", "Required": true,  "Example": "2024-01-15" },
+      { "Name": "ParentMobile",      "Type": "Text",     "Required": true,  "Example": "+919876543210" },
+      { "Name": "ParentName",        "Type": "Text",     "Required": true,  "Example": "Priya Kumar" },
+      { "Name": "PreferredLanguage", "Type": "Text",     "Required": false, "Example": "ta",   "Note": "en / ta / hi" },
+      { "Name": "ClinicCode",        "Type": "Text",     "Required": true,  "Example": "PHC-CHN-001" },
+      { "Name": "ClinicName",        "Type": "Text",     "Required": true,  "Example": "PHC Velachery" },
+      { "Name": "District",          "Type": "Text",     "Required": true,  "Example": "Chennai" },
+      { "Name": "ABHA_ID",           "Type": "Text",     "Required": false, "Example": "12-3456-7890-1234" },
+      { "Name": "BirthWeightGrams",  "Type": "Number",   "Required": false, "Default": 2500 },
+      { "Name": "GestationWeeks",    "Type": "Number",   "Required": false, "Default": 40 },
+      { "Name": "CurrentStage",      "Type": "Number",   "Required": false, "Default": 1 },
+      { "Name": "NextVaccine",       "Type": "Text",     "Required": false, "Example": "PCV3" },
+      { "Name": "NextDueDate",       "Type": "DateTime", "Required": false },
+      { "Name": "RiskScore",         "Type": "Decimal",  "Required": false, "Example": 0.35 },
+      { "Name": "HighRiskFlag",      "Type": "Boolean",  "Required": false, "Default": false },
+      { "Name": "RemindersSent",     "Type": "Number",   "Required": false, "Default": 0 },
+      { "Name": "NoShowCount",       "Type": "Number",   "Required": false, "Default": 0 },
+      { "Name": "IsMigrated",        "Type": "Boolean",  "Required": false, "Default": false },
+      { "Name": "NewDistrict",       "Type": "Text",     "Required": false },
+      { "Name": "CaseStatus",        "Type": "Text",     "Required": false, "Default": "Active",
+        "Note": "Active / Escalated / Migrated / Completed" }
+    ]
+  },
+
+  "Stages": {
+    "Description": "Create these under the Stages tab. Set Type=Automated for robot stages, Type=Action for human stages.",
+    "List": [
+      {
+        "Order": 1, "Name": "Child Registration",
+        "Type": "Automated",
+        "Description": "Robot reads RCH card, creates case record",
+        "AssignedProcess": "VacciCare_Maestro",
+        "Workflow": "Stage1_Registration.xaml"
+      },
+      {
+        "Order": 2, "Name": "Schedule Planning",
+        "Type": "Automated",
+        "Description": "Calls Python schedule builder, stores next vaccine in case",
+        "AssignedProcess": "VacciCare_Maestro",
+        "Workflow": "Stage2_SchedulePlanning.xaml",
+        "SLA": "Complete within 10 minutes or alert supervisor"
+      },
+      {
+        "Order": 3, "Name": "Reminder Dispatch",
+        "Type": "Automated",
+        "Description": "Composes multilingual reminder, dispatches via MSG91 WhatsApp",
+        "AssignedProcess": "VacciCare_Maestro",
+        "Workflow": "Stage3_ReminderDispatch.xaml",
+        "SLA": "Send reminder at T-7 days, T-1 day, and day-of"
+      },
+      {
+        "Order": 4, "Name": "Appointment Confirmation",
+        "Type": "Wait",
+        "Description": "Maestro waits for parent reply webhook",
+        "SLA": "If no reply in 48 hours → move to Stage 7 (No-show Follow-up)"
+      },
+      {
+        "Order": 5, "Name": "Stock Verification",
+        "Type": "Automated",
+        "Description": "Robot checks clinic inventory system for vaccine availability",
+        "AssignedProcess": "VacciCare_Maestro",
+        "Workflow": "Stage5_StockCheck.xaml"
+      },
+      {
+        "Order": 6, "Name": "Visit Recording",
+        "Type": "Action",
+        "Description": "Nurse confirms vaccination was given — fills action form",
+        "ActionForm": {
+          "Name": "ConfirmVaccination",
+          "Fields": [
+            { "Name": "VaccineGiven",      "Type": "Text",    "PreFilled": true,  "Source": "NextVaccine" },
+            { "Name": "DateAdministered",  "Type": "Date",    "Required": true },
+            { "Name": "BatchNumber",       "Type": "Text",    "Required": true },
+            { "Name": "Confirmed",         "Type": "Boolean", "Required": true,   "Note": "Must be checked to submit" }
+          ]
+        },
+        "SLA": "Complete within 2 hours or notify nurse supervisor"
+      },
+      {
+        "Order": 7, "Name": "No-show Follow-up",
+        "Type": "Action",
+        "Description": "Health worker calls parent — risk scorer sets priority queue",
+        "AssignedProcess": "VacciCare_Maestro",
+        "Workflow": "Stage7_RiskScore.xaml",
+        "SLA": "If not resolved in 5 days → set HighRiskFlag = true"
+      },
+      {
+        "Order": 8, "Name": "Migration Handling",
+        "Type": "Automated",
+        "Description": "AI detects new address from WhatsApp reply, suggests new PHC",
+        "AssignedProcess": "VacciCare_Maestro",
+        "Workflow": "Stage8_Migration.xaml"
+      },
+      {
+        "Order": 9, "Name": "Case Closure",
+        "Type": "Automated",
+        "Description": "Generates bilingual PDF certificate with ABHA QR code",
+        "AssignedProcess": "VacciCare_Maestro",
+        "Workflow": "Stage9_CaseClosure.xaml",
+        "SLA": "Complete within 1 hour or alert records team"
+      }
+    ]
+  },
+
+  "Transitions": [
+    { "From": "Stage 2", "To": "Stage 3",  "Trigger": "Automatic after schedule built" },
+    { "From": "Stage 3", "To": "Stage 4",  "Trigger": "Automatic after reminder sent" },
+    { "From": "Stage 4", "To": "Stage 5",  "Trigger": "Parent replies YES" },
+    { "From": "Stage 4", "To": "Stage 7",  "Trigger": "48h SLA breach — no reply" },
+    { "From": "Stage 5", "To": "Stage 6",  "Trigger": "Stock confirmed" },
+    { "From": "Stage 6", "To": "Stage 2",  "Trigger": "Nurse confirms vaccination — loop for next dose" },
+    { "From": "Stage 6", "To": "Stage 9",  "Trigger": "All doses complete" },
+    { "From": "Stage 7", "To": "Stage 3",  "Trigger": "Parent reached — reschedule" },
+    { "From": "Stage 7", "To": "Stage 8",  "Trigger": "Parent reports relocation" },
+    { "From": "Stage 8", "To": "Stage 3",  "Trigger": "New clinic assigned" }
+  ],
+
+  "PythonServices": {
+    "Note": "Register these as HTTP Connectors in UiPath Integration Service",
+    "Services": [
+      { "Name": "VacciCare_ScheduleBuilder",  "BaseURL": "https://vaccicare-schedule.up.railway.app",  "Endpoint": "/schedule",          "Method": "POST", "UsedInStage": 2 },
+      { "Name": "VacciCare_MigrationAgent",   "BaseURL": "https://vaccicare-migration.up.railway.app", "Endpoint": "/detect-migration",  "Method": "POST", "UsedInStage": 8 },
+      { "Name": "VacciCare_ReminderComposer", "BaseURL": "https://vaccicare-reminder.up.railway.app",  "Endpoint": "/compose",           "Method": "POST", "UsedInStage": 3 },
+      { "Name": "VacciCare_RiskScorer",       "BaseURL": "https://vaccicare-risk.up.railway.app",      "Endpoint": "/score",             "Method": "POST", "UsedInStage": 7 },
+      { "Name": "VacciCare_CertGenerator",    "BaseURL": "https://vaccicare-cert.up.railway.app",      "Endpoint": "/generate",          "Method": "POST", "UsedInStage": 9 }
+    ]
+  }
+}

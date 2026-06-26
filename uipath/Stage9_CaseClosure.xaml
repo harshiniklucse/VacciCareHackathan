@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010"
+    x:Class="VacciCare_Maestro.Stage9_CaseClosure"
+    xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
+    xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+    xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+    xmlns:ui="http://schemas.uipath.com/workflow/activities"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Stage 9 — Case Closure
+       Calls Python Certificate Generator (port 8005).
+       Generates bilingual PDF with ABHA QR code.
+       ═══════════════════════════════════════════════════════ -->
+
+  <x:Members>
+    <x:Property Name="in_CaseID"       Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildName"    Type="InArgument(x:String)" />
+    <x:Property Name="in_DOB"          Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentName"   Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicName"   Type="InArgument(x:String)" />
+    <x:Property Name="in_District"     Type="InArgument(x:String)" />
+    <x:Property Name="in_AbhaID"       Type="InArgument(x:String)" />
+    <x:Property Name="in_VaccinesJSON" Type="InArgument(x:String)" />
+    <x:Property Name="out_CertPath"    Type="OutArgument(x:String)" />
+    <x:Property Name="out_TotalDoses"  Type="OutArgument(x:Int32)"  />
+  </x:Members>
+
+  <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
+
+  <Sequence DisplayName="Stage 9 — Case Closure &amp; Certificate">
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String" Name="v_ServiceUrl"   Default='"http://localhost:8005/generate"' />
+      <Variable x:TypeArguments="x:String" Name="v_RequestBody"  Default='""' />
+      <Variable x:TypeArguments="x:String" Name="v_ResponseBody" Default='""' />
+      <Variable x:TypeArguments="x:String" Name="v_StatusCode"   Default='""' />
+      <Variable x:TypeArguments="x:String" Name="v_CertPath"     Default='""' />
+      <Variable x:TypeArguments="x:Int32"  Name="v_TotalDoses"   Default="0" />
+      <Variable x:TypeArguments="x:String" Name="v_VaccinesJSON" Default='"[]"' />
+    </Sequence.Variables>
+
+    <WriteLine DisplayName="[Log] Stage 9 starting"
+        Text="['[Stage9] Generating certificate for case: ' + in_CaseID]" />
+
+    <!-- STEP 1 — Prepare vaccines JSON (use passed-in or default sample) -->
+    <Assign DisplayName="Set Vaccines JSON">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_VaccinesJSON}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [If(String.IsNullOrWhiteSpace(in_VaccinesJSON), "[]", in_VaccinesJSON)]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <!-- STEP 2 — Build full request JSON -->
+    <Assign DisplayName="Build Certificate Request">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""dob"":""{2}"",""parent_name"":""{3}"",""clinic_name"":""{4}"",""district"":""{5}"",""abha_id"":""{6}"",""vaccines"":{7}}}",
+            in_CaseID, in_ChildName, in_DOB, in_ParentName,
+            in_ClinicName, in_District,
+            If(String.IsNullOrWhiteSpace(in_AbhaID), "NOT-REGISTERED", in_AbhaID),
+            v_VaccinesJSON)]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <!-- STEP 3 — HTTP POST to Certificate Generator -->
+    <ui:HttpClient DisplayName="POST /generate — Certificate Generator"
+        Endpoint="[v_ServiceUrl]"
+        Method="POST"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptFormat="application/json"
+        Response="[v_ResponseBody]"
+        StatusCode="[v_StatusCode]" />
+
+    <!-- STEP 4 — Parse response -->
+    <If DisplayName="Check Response OK">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode.StartsWith("2")]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="Parse certificate response">
+          <Assign DisplayName="Extract CertPath">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_CertPath}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CertPath").ToString()]</InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract TotalDoses">
+            <Assign.To><OutArgument x:TypeArguments="x:Int32"><VariableReference x:TypeArguments="x:Int32" Variable="{x:Reference v_TotalDoses}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TotalDoses").ToString())]</InArgument></Assign.Value>
+          </Assign>
+          <WriteLine DisplayName="[Log] Certificate generated"
+              Text="['[Stage9] Certificate saved: ' + v_CertPath + ' | Total doses: ' + v_TotalDoses.ToString()]" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <Throw DisplayName="Throw — Certificate Error">
+          <Throw.Exception>
+            <InArgument x:TypeArguments="x:Exception">
+              [New Exception("[Stage9] Certificate Generator returned HTTP " + v_StatusCode)]
+            </InArgument>
+          </Throw.Exception>
+        </Throw>
+      </If.Else>
+    </If>
+
+    <!-- STEP 5 — Set output arguments -->
+    <Assign DisplayName="Set out_CertPath">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_CertPath" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_CertPath]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_TotalDoses">
+      <Assign.To><OutArgument x:TypeArguments="x:Int32"><ArgumentReference x:TypeArguments="x:Int32" ArgumentName="out_TotalDoses" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Int32">[v_TotalDoses]</InArgument></Assign.Value>
+    </Assign>
+
+    <WriteLine DisplayName="[Log] Case closed"
+        Text="['[Stage9] CASE CLOSED — ' + in_CaseID + ' fully immunised. Certificate: ' + v_CertPath]" />
+
+  </Sequence>
+</Activity>

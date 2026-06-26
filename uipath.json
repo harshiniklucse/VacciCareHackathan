@@ -1,0 +1,38 @@
+{
+  "name": "VacciCare_Maestro",
+  "description": "AI-powered child vaccination follow-up system — UiPath Maestro + Claude Code Python layer",
+  "version": "1.0.0",
+  "entryPoint": "vaccicare_agent.py",
+  "parameters": {
+    "input": {
+      "action": {
+        "type": "string",
+        "description": "Stage action to execute",
+        "enum": [
+          "stage2_schedule",
+          "stage3_reminder",
+          "stage7_risk",
+          "stage8_migration",
+          "stage9_cert"
+        ]
+      },
+      "payload": {
+        "type": "object",
+        "description": "Stage-specific input payload"
+      }
+    },
+    "output": {
+      "result": {
+        "type": "object",
+        "description": "JSON result from the Python microservice"
+      }
+    }
+  },
+  "services": {
+    "schedule_builder":  { "port": 8001, "path": "/schedule" },
+    "migration_agent":   { "port": 8002, "path": "/detect-migration" },
+    "reminder_composer": { "port": 8003, "path": "/compose" },
+    "risk_scorer":       { "port": 8004, "path": "/score" },
+    "cert_generator":    { "port": 8005, "path": "/generate" }
+  }
+}

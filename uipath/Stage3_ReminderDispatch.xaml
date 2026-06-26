@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010"
+    x:Class="VacciCare_Maestro.Stage3_ReminderDispatch"
+    xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
+    xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+    xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+    xmlns:ui="http://schemas.uipath.com/workflow/activities"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Stage 3 — Reminder Dispatch
+       Calls Python Reminder Composer (port 8003) and returns
+       a DLT-compliant WhatsApp message body ready for MSG91.
+       ═══════════════════════════════════════════════════════ -->
+
+  <x:Members>
+    <x:Property Name="in_CaseID"          Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildName"       Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentName"      Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentMobile"    Type="InArgument(x:String)" />
+    <x:Property Name="in_VaccineName"     Type="InArgument(x:String)" />
+    <x:Property Name="in_DueDate"         Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicName"      Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicAddress"   Type="InArgument(x:String)" />
+    <x:Property Name="in_Language"        Type="InArgument(x:String)" />
+    <x:Property Name="in_ReminderNumber"  Type="InArgument(x:Int32)"  />
+    <x:Property Name="out_MessageBody"    Type="OutArgument(x:String)" />
+    <x:Property Name="out_DLTTemplateID"  Type="OutArgument(x:String)" />
+    <x:Property Name="out_CharCount"      Type="OutArgument(x:Int32)"  />
+  </x:Members>
+
+  <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
+
+  <Sequence DisplayName="Stage 3 — Reminder Dispatch">
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String" Name="v_ServiceUrl"    Default='"http://localhost:8003/compose"' />
+      <Variable x:TypeArguments="x:String" Name="v_RequestBody"   Default='""' />
+      <Variable x:TypeArguments="x:String" Name="v_ResponseBody"  Default='""' />
+      <Variable x:TypeArguments="x:String" Name="v_StatusCode"    Default='""' />
+      <Variable x:TypeArguments="x:String" Name="v_MessageBody"   Default='""' />
+      <Variable x:TypeArguments="x:String" Name="v_DLTTemplateID" Default='""' />
+      <Variable x:TypeArguments="x:Int32"  Name="v_CharCount"     Default="0" />
+      <Variable x:TypeArguments="x:String" Name="v_Language"      Default='"en"' />
+    </Sequence.Variables>
+
+    <!-- STEP 1 — Normalise language (default to "en") -->
+    <Assign DisplayName="Normalise Language">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Language}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [If(String.IsNullOrWhiteSpace(in_Language), "en", in_Language.ToLower().Trim())]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <WriteLine DisplayName="[Log] Stage 3 starting"
+        Text="['[Stage3] Composing reminder for ' + in_CaseID + ' | lang=' + v_Language + ' | reminder#' + in_ReminderNumber.ToString()]" />
+
+    <!-- STEP 2 — Build JSON request body -->
+    <Assign DisplayName="Build Request JSON">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""parent_name"":""{2}"",""vaccine_name"":""{3}"",""due_date"":""{4}"",""clinic_name"":""{5}"",""clinic_address"":""{6}"",""language"":""{7}"",""reminder_number"":{8}}}",
+            in_CaseID, in_ChildName, in_ParentName,
+            in_VaccineName, in_DueDate,
+            in_ClinicName, in_ClinicAddress,
+            v_Language,
+            If(in_ReminderNumber = 0, 1, in_ReminderNumber))]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <!-- STEP 3 — HTTP POST to Reminder Composer -->
+    <ui:HttpClient DisplayName="POST /compose — Reminder Composer"
+        Endpoint="[v_ServiceUrl]"
+        Method="POST"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptFormat="application/json"
+        Response="[v_ResponseBody]"
+        StatusCode="[v_StatusCode]" />
+
+    <!-- STEP 4 — Parse response -->
+    <If DisplayName="Check Response OK">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode.StartsWith("2")]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="Parse reminder response">
+          <Assign DisplayName="Extract MessageBody">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_MessageBody}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("MessageBody").ToString()]</InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract DLTTemplateID">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_DLTTemplateID}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID").ToString()]</InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract CharCount">
+            <Assign.To><OutArgument x:TypeArguments="x:Int32"><VariableReference x:TypeArguments="x:Int32" Variable="{x:Reference v_CharCount}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CharCount").ToString())]</InArgument></Assign.Value>
+          </Assign>
+          <WriteLine DisplayName="[Log] Reminder ready"
+              Text="['[Stage3] DLT=' + v_DLTTemplateID + ' | Chars=' + v_CharCount.ToString() + ' | Msg: ' + v_MessageBody.Substring(0, Math.Min(50, v_MessageBody.Length)) + '...']" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <Throw DisplayName="Throw — Reminder Service Error">
+          <Throw.Exception>
+            <InArgument x:TypeArguments="x:Exception">
+              [New Exception("[Stage3] Reminder Composer returned HTTP " + v_StatusCode)]
+            </InArgument>
+          </Throw.Exception>
+        </Throw>
+      </If.Else>
+    </If>
+
+    <!-- STEP 5 — Set output arguments -->
+    <Assign DisplayName="Set out_MessageBody">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_MessageBody" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_MessageBody]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_DLTTemplateID">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_DLTTemplateID" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_DLTTemplateID]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_CharCount">
+      <Assign.To><OutArgument x:TypeArguments="x:Int32"><ArgumentReference x:TypeArguments="x:Int32" ArgumentName="out_CharCount" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Int32">[v_CharCount]</InArgument></Assign.Value>
+    </Assign>
+
+  </Sequence>
+</Activity>

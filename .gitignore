@@ -1,0 +1,35 @@
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# pytest
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Generated output (certs, QR images)
+certs_output/
+
+# Environment secrets
+.env
+.env.local
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# UiPath project cache
+.local/
+.objects/

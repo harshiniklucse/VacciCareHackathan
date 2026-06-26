@@ -1,0 +1,26 @@
+{
+  "name": "VacciCare_Maestro",
+  "description": "AI-powered child vaccination follow-up — UiPath Maestro + Claude Code Python layer",
+  "main": "Main.xaml",
+  "outputType": "Process",
+  "supportedPlatforms": ["Windows"],
+  "targetFramework": "Windows",
+  "studioVersion": "24.10.0",
+  "projectVersion": "1.0.0",
+  "runtimeOptions": {
+    "autoDispose": false,
+    "pauseActivityScheduler": false
+  },
+  "dependencies": {
+    "UiPath.System.Activities":   "[24.10.0, )",
+    "UiPath.Web.Activities":      "[24.10.0, )",
+    "UiPath.Excel.Activities":    "[24.10.0, )"
+  },
+  "channelId": "",
+  "channels": {},
+  "designOptions": {
+    "projectProfile": "Roaming",
+    "expressionLanguage": "VisualBasic",
+    "workflowDesignLanguage": "VisualBasic"
+  }
+}
