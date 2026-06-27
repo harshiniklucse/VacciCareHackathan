@@ -30,7 +30,7 @@
 
   <Sequence DisplayName="Stage 2 — Schedule Planning">
     <Sequence.Variables>
-      <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"    Default='"http://localhost:8001/schedule"' />
+      <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"    Default='"https://vaccicarehackathan-production.up.railway.app/schedule"' />
       <Variable x:TypeArguments="x:String"  Name="v_RequestBody"   Default='""' />
       <Variable x:TypeArguments="x:String"  Name="v_ResponseBody"  Default='""' />
       <Variable x:TypeArguments="x:String"  Name="v_StatusCode"    Default='""' />

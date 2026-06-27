@@ -32,7 +32,7 @@
 
   <Sequence DisplayName="Stage 9 — Case Closure &amp; Certificate">
     <Sequence.Variables>
-      <Variable x:TypeArguments="x:String" Name="v_ServiceUrl"   Default='"http://localhost:8005/generate"' />
+      <Variable x:TypeArguments="x:String" Name="v_ServiceUrl"   Default='"https://vaccicarehackathan-production.up.railway.app/generate"' />
       <Variable x:TypeArguments="x:String" Name="v_RequestBody"  Default='""' />
       <Variable x:TypeArguments="x:String" Name="v_ResponseBody" Default='""' />
       <Variable x:TypeArguments="x:String" Name="v_StatusCode"   Default='""' />
