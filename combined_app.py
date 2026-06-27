@@ -1,10 +1,9 @@
 """
 VacciCare Maestro — Combined FastAPI app
-All 5 microservices on a single Railway instance.
-Uses add_api_route so all POST endpoints appear correctly in /docs.
+Directly imports all endpoint functions and registers them.
+More reliable than copying route objects between apps.
 """
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 from fastapi.responses import JSONResponse
 
 app = FastAPI(
@@ -13,46 +12,49 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# ── Import each sub-app and copy its routes into this app ────────────────────
+# ── Schedule Builder (port 8001 logic) ───────────────────────────────────────
+from scheduler.vaccine_scheduler import generate_schedule, health as sched_health, ScheduleRequest
 
-from scheduler.vaccine_scheduler import app as _sched
-from migration.migration_agent   import app as _mig
-from reminder.reminder_composer  import app as _rem
-from risk.risk_scorer            import app as _risk
-from cert.cert_generator         import app as _cert
+app.add_api_route("/health/schedule",   sched_health,      methods=["GET"],  tags=["Schedule Builder"], summary="Schedule Builder health")
+app.add_api_route("/schedule",          generate_schedule,  methods=["POST"], tags=["Schedule Builder"], summary="Generate IAP 2024 vaccine schedule")
 
-def _copy_routes(source, tag):
-    for route in source.routes:
-        if isinstance(route, APIRoute):
-            app.add_api_route(
-                path=route.path,
-                endpoint=route.endpoint,
-                methods=list(route.methods),
-                tags=[tag],
-                summary=route.summary or route.name,
-                response_model=route.response_model,
-            )
+# ── Migration Agent (port 8002 logic) ────────────────────────────────────────
+from migration.migration_agent import detect_migration, health as mig_health, MigrationRequest
 
-_copy_routes(_sched, "Schedule Builder")
-_copy_routes(_mig,   "Migration Agent")
-_copy_routes(_rem,   "Reminder Composer")
-_copy_routes(_risk,  "Risk Scorer")
-_copy_routes(_cert,  "Certificate Generator")
+app.add_api_route("/health/migration",  mig_health,        methods=["GET"],  tags=["Migration Agent"],   summary="Migration Agent health")
+app.add_api_route("/detect-migration",  detect_migration,   methods=["POST"], tags=["Migration Agent"],   summary="Detect family relocation from WhatsApp message")
 
+# ── Reminder Composer (port 8003 logic) ──────────────────────────────────────
+from reminder.reminder_composer import compose_reminder, health as rem_health, ReminderRequest
 
-# ── Root & combined health check ─────────────────────────────────────────────
+app.add_api_route("/health/reminder",   rem_health,        methods=["GET"],  tags=["Reminder Composer"], summary="Reminder Composer health")
+app.add_api_route("/compose",           compose_reminder,   methods=["POST"], tags=["Reminder Composer"], summary="Compose multilingual DLT-compliant reminder")
 
-@app.get("/health", tags=["Health"])
+# ── Risk Scorer (port 8004 logic) ────────────────────────────────────────────
+from risk.risk_scorer import score_risk, health as risk_health, RiskRequest
+
+app.add_api_route("/health/risk",       risk_health,       methods=["GET"],  tags=["Risk Scorer"],       summary="Risk Scorer health")
+app.add_api_route("/score",             score_risk,         methods=["POST"], tags=["Risk Scorer"],       summary="Score dropout risk (0-1)")
+
+# ── Certificate Generator (port 8005 logic) ───────────────────────────────────
+from cert.cert_generator import generate_certificate, download_cert, health as cert_health, CertRequest
+
+app.add_api_route("/health/cert",       cert_health,       methods=["GET"],  tags=["Certificate Generator"], summary="Certificate Generator health")
+app.add_api_route("/generate",          generate_certificate, methods=["POST"], tags=["Certificate Generator"], summary="Generate bilingual PDF certificate")
+app.add_api_route("/download/{child_id}", download_cert,   methods=["GET"],  tags=["Certificate Generator"], summary="Download generated certificate")
+
+# ── Root health ───────────────────────────────────────────────────────────────
+@app.get("/health", tags=["Health"], summary="Overall health check")
 def health():
     return {
         "status":  "ok",
         "service": "vaccicare-combined",
-        "routes": {
-            "POST /schedule":         "IAP 2024 vaccine schedule builder",
-            "POST /detect-migration": "Family relocation detection (Claude AI)",
-            "POST /compose":          "Multilingual DLT reminder composer",
-            "POST /score":            "Dropout risk scorer",
-            "POST /generate":         "Bilingual PDF certificate generator",
+        "endpoints": {
+            "POST /schedule":           "IAP 2024 vaccine schedule builder",
+            "POST /detect-migration":   "Family relocation detection (Claude AI)",
+            "POST /compose":            "Multilingual DLT reminder composer",
+            "POST /score":              "Dropout risk scorer",
+            "POST /generate":           "Bilingual PDF certificate generator",
         }
     }
 
