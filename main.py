@@ -14,6 +14,7 @@ _APPS = {
     "reminder":  "reminder.reminder_composer:app",
     "risk":      "risk.risk_scorer:app",
     "cert":      "cert.cert_generator:app",
+    "combined":  "combined_app:app",   # all 5 services on one instance
 }
 
 if __name__ == "__main__":
