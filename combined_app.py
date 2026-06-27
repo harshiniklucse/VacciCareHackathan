@@ -1,68 +1,62 @@
 """
 VacciCare Maestro — Combined FastAPI app
 All 5 microservices on a single Railway instance.
-Endpoints:
-  POST /schedule          → Schedule Builder
-  POST /detect-migration  → Migration Agent
-  POST /compose           → Reminder Composer
-  POST /score             → Risk Scorer
-  POST /generate          → Certificate Generator
-  GET  /health            → Overall health check
-  GET  /docs              → Swagger UI (all endpoints)
+Uses add_api_route so all POST endpoints appear correctly in /docs.
 """
-
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from fastapi.responses import JSONResponse
-
-# Import all route handlers from each service
-from scheduler.vaccine_scheduler  import app as sched_app
-from migration.migration_agent    import app as mig_app
-from reminder.reminder_composer   import app as rem_app
-from risk.risk_scorer             import app as risk_app
-from cert.cert_generator          import app as cert_app
 
 app = FastAPI(
     title="VacciCare Maestro — All Services",
-    description="AI-powered child vaccination follow-up system. All 5 microservices combined.",
+    description="AI-powered child vaccination follow-up. All 5 microservices on one URL.",
     version="1.0.0",
 )
 
-# ── Mount all routes from each sub-app ───────────────────────────────────────
+# ── Import each sub-app and copy its routes into this app ────────────────────
 
-for route in sched_app.routes:
-    app.routes.append(route)
+from scheduler.vaccine_scheduler import app as _sched
+from migration.migration_agent   import app as _mig
+from reminder.reminder_composer  import app as _rem
+from risk.risk_scorer            import app as _risk
+from cert.cert_generator         import app as _cert
 
-for route in mig_app.routes:
-    app.routes.append(route)
+def _copy_routes(source, tag):
+    for route in source.routes:
+        if isinstance(route, APIRoute):
+            app.add_api_route(
+                path=route.path,
+                endpoint=route.endpoint,
+                methods=list(route.methods),
+                tags=[tag],
+                summary=route.summary or route.name,
+                response_model=route.response_model,
+            )
 
-for route in rem_app.routes:
-    app.routes.append(route)
-
-for route in risk_app.routes:
-    app.routes.append(route)
-
-for route in cert_app.routes:
-    app.routes.append(route)
+_copy_routes(_sched, "Schedule Builder")
+_copy_routes(_mig,   "Migration Agent")
+_copy_routes(_rem,   "Reminder Composer")
+_copy_routes(_risk,  "Risk Scorer")
+_copy_routes(_cert,  "Certificate Generator")
 
 
-# ── Root health check ────────────────────────────────────────────────────────
+# ── Root & combined health check ─────────────────────────────────────────────
 
-@app.get("/health", tags=["health"])
+@app.get("/health", tags=["Health"])
 def health():
     return {
-        "status": "ok",
+        "status":  "ok",
         "service": "vaccicare-combined",
-        "endpoints": {
-            "schedule_builder":  "POST /schedule",
-            "migration_agent":   "POST /detect-migration",
-            "reminder_composer": "POST /compose",
-            "risk_scorer":       "POST /score",
-            "cert_generator":    "POST /generate",
+        "routes": {
+            "POST /schedule":         "IAP 2024 vaccine schedule builder",
+            "POST /detect-migration": "Family relocation detection (Claude AI)",
+            "POST /compose":          "Multilingual DLT reminder composer",
+            "POST /score":            "Dropout risk scorer",
+            "POST /generate":         "Bilingual PDF certificate generator",
         }
     }
 
-
-@app.get("/", tags=["health"])
+@app.get("/", tags=["Health"])
 def root():
     return JSONResponse({
         "project": "VacciCare Maestro",
