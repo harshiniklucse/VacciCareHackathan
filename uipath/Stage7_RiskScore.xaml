@@ -6,12 +6,12 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
-    xmlns:ui="http://schemas.uipath.com/workflow/activities"
+    xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <!-- ═══════════════════════════════════════════════════════
        Stage 7 — No-show Risk Scoring
-       Calls Python Risk Scorer (port 8004).
+       Calls Python Risk Scorer.
        If EscalateImmediately=True, Maestro routes to the
        high-priority health worker queue immediately.
        ═══════════════════════════════════════════════════════ -->
@@ -38,7 +38,7 @@
       <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"   Default='"https://vaccicarehackathan-production.up.railway.app/score"' />
       <Variable x:TypeArguments="x:String"  Name="v_RequestBody"  Default='""' />
       <Variable x:TypeArguments="x:String"  Name="v_ResponseBody" Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_StatusCode"   Default='""' />
+      <Variable x:TypeArguments="x:Int32"   Name="v_StatusCode"   Default="0" />
       <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"    Default="0.0" />
       <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"    Default='""' />
       <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow"  Default="False" />
@@ -70,20 +70,20 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 2 — HTTP POST to Risk Scorer -->
-    <ui:HttpClient DisplayName="POST /score — Risk Scorer"
-        Endpoint="[v_ServiceUrl]"
-        Method="POST"
+    <!-- STEP 2 — HTTP POST to Risk Scorer (UiPath.WebAPI.Activities) -->
+    <webapi:HTTPRequest DisplayName="POST /score — Risk Scorer"
+        EndPoint="[v_ServiceUrl]"
+        Method="Post"
         Body="[v_RequestBody]"
         BodyFormat="application/json"
-        AcceptFormat="application/json"
-        Response="[v_ResponseBody]"
+        AcceptedMediaType="application/json"
+        ResponseContent="[v_ResponseBody]"
         StatusCode="[v_StatusCode]" />
 
-    <!-- STEP 3 — Parse response -->
+    <!-- STEP 3 — Parse response (StatusCode is Int32) -->
     <If DisplayName="Check Response OK">
       <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode.StartsWith("2")]</InArgument>
+        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode >= 200 AndAlso v_StatusCode &lt;= 299]</InArgument>
       </If.Condition>
       <If.Then>
         <Sequence DisplayName="Parse risk response">
@@ -109,7 +109,7 @@
         <Throw DisplayName="Throw — Risk Scorer Error">
           <Throw.Exception>
             <InArgument x:TypeArguments="x:Exception">
-              [New Exception("[Stage7] Risk Scorer returned HTTP " + v_StatusCode)]
+              [New Exception("[Stage7] Risk Scorer returned HTTP " + v_StatusCode.ToString())]
             </InArgument>
           </Throw.Exception>
         </Throw>
@@ -125,7 +125,7 @@
       </If.Then>
       <If.Else>
         <WriteLine DisplayName="[Log] Normal Risk"
-            Text="['[Stage7] Risk=' + v_RiskLabel + ' (' + v_RiskScore.ToString(""F2"") + '') | Factor=' + v_TopFactor + ' | Standard queue']" />
+            Text="['[Stage7] Risk=' + v_RiskLabel + ' (' + v_RiskScore.ToString(""F2"") + ') | Factor=' + v_TopFactor + ' | Standard queue']" />
       </If.Else>
     </If>
 

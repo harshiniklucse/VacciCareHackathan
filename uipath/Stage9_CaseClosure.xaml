@@ -6,12 +6,12 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
-    xmlns:ui="http://schemas.uipath.com/workflow/activities"
+    xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <!-- ═══════════════════════════════════════════════════════
        Stage 9 — Case Closure
-       Calls Python Certificate Generator (port 8005).
+       Calls Python Certificate Generator.
        Generates bilingual PDF with ABHA QR code.
        ═══════════════════════════════════════════════════════ -->
 
@@ -35,7 +35,7 @@
       <Variable x:TypeArguments="x:String" Name="v_ServiceUrl"   Default='"https://vaccicarehackathan-production.up.railway.app/generate"' />
       <Variable x:TypeArguments="x:String" Name="v_RequestBody"  Default='""' />
       <Variable x:TypeArguments="x:String" Name="v_ResponseBody" Default='""' />
-      <Variable x:TypeArguments="x:String" Name="v_StatusCode"   Default='""' />
+      <Variable x:TypeArguments="x:Int32"  Name="v_StatusCode"   Default="0" />
       <Variable x:TypeArguments="x:String" Name="v_CertPath"     Default='""' />
       <Variable x:TypeArguments="x:Int32"  Name="v_TotalDoses"   Default="0" />
       <Variable x:TypeArguments="x:String" Name="v_VaccinesJSON" Default='"[]"' />
@@ -76,20 +76,20 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 3 — HTTP POST to Certificate Generator -->
-    <ui:HttpClient DisplayName="POST /generate — Certificate Generator"
-        Endpoint="[v_ServiceUrl]"
-        Method="POST"
+    <!-- STEP 3 — HTTP POST to Certificate Generator (UiPath.WebAPI.Activities) -->
+    <webapi:HTTPRequest DisplayName="POST /generate — Certificate Generator"
+        EndPoint="[v_ServiceUrl]"
+        Method="Post"
         Body="[v_RequestBody]"
         BodyFormat="application/json"
-        AcceptFormat="application/json"
-        Response="[v_ResponseBody]"
+        AcceptedMediaType="application/json"
+        ResponseContent="[v_ResponseBody]"
         StatusCode="[v_StatusCode]" />
 
-    <!-- STEP 4 — Parse response -->
+    <!-- STEP 4 — Parse response (StatusCode is Int32) -->
     <If DisplayName="Check Response OK">
       <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode.StartsWith("2")]</InArgument>
+        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode >= 200 AndAlso v_StatusCode &lt;= 299]</InArgument>
       </If.Condition>
       <If.Then>
         <Sequence DisplayName="Parse certificate response">
@@ -109,7 +109,7 @@
         <Throw DisplayName="Throw — Certificate Error">
           <Throw.Exception>
             <InArgument x:TypeArguments="x:Exception">
-              [New Exception("[Stage9] Certificate Generator returned HTTP " + v_StatusCode)]
+              [New Exception("[Stage9] Certificate Generator returned HTTP " + v_StatusCode.ToString())]
             </InArgument>
           </Throw.Exception>
         </Throw>

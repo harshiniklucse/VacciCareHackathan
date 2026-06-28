@@ -1,28 +1,50 @@
 {
-  "schemaVersion": "4.0",
   "name": "VacciCare_Maestro",
+  "projectId": "5b2dd5e2-b496-4b19-9181-8466c3f11ad0",
   "description": "AI-powered child vaccination follow-up — UiPath Maestro + Claude Code Python layer",
   "main": "Main.xaml",
-  "outputType": "Process",
-  "expressionLanguage": "VisualBasic",
-  "supportedPlatforms": ["Windows"],
-  "targetFramework": "Windows",
+  "dependencies": {
+    "UiPath.System.Activities": "[24.10.0]",
+    "UiPath.WebAPI.Activities": "[1.18.0]"
+  },
+  "webServices": [],
+  "entitiesStores": [],
+  "schemaVersion": "4.0",
   "studioVersion": "24.10.0",
   "projectVersion": "1.0.0",
   "runtimeOptions": {
     "autoDispose": false,
-    "pauseActivityScheduler": false
+    "netFrameworkLazyLoading": false,
+    "isPausable": true,
+    "isAttended": false,
+    "requiresUserInteraction": true,
+    "supportsPersistence": false,
+    "workflowSerialization": "DataContract",
+    "excludedLoggedData": [
+      "Private:*",
+      "*password*"
+    ],
+    "executionType": "Workflow",
+    "readyForPiP": false,
+    "startsInPiP": false,
+    "mustRestoreAllDependencies": false,
+    "pipType": "ChildSession"
   },
   "designOptions": {
-    "projectProfile": "Roaming",
-    "expressionLanguage": "VisualBasic",
-    "workflowDesignLanguage": "VisualBasic"
+    "projectProfile": "Developement",
+    "outputType": "Process",
+    "libraryOptions": {
+      "privateWorkflows": []
+    },
+    "processOptions": {
+      "ignoredFiles": []
+    },
+    "fileInfoCollection": [],
+    "saveToCloud": false
   },
-  "dependencies": {
-    "UiPath.System.Activities": "[22.4.0, )",
-    "UiPath.Web.Activities":    "[22.4.0, )",
-    "UiPath.Excel.Activities":  "[22.4.0, )"
-  },
-  "channelId": "",
-  "channels": {}
+  "expressionLanguage": "VisualBasic",
+  "isTemplate": false,
+  "templateProjectData": {},
+  "publishData": {},
+  "targetFramework": "Windows"
 }
