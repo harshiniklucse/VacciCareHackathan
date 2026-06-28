@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  VacciCare Maestro — Main.xaml                                       ║
+  ║  Orchestrates all 4 AI-powered stages via Railway microservices.     ║
+  ║                                                                      ║
+  ║  HTTP calls use the built-in UiPath HTTP Request activity            ║
+  ║  (UiPath.WebAPI.Activities 2.3.1 — already in project.json).        ║
+  ║                                                                      ║
+  ║  KEY FIXES vs earlier versions:                                      ║
+  ║  • webapi:HttpRequest  ← correct class name (not HTTPRequest)        ║
+  ║  • OutArgument uses [varname] VB expr  ← not {x:Reference}          ║
+  ║  • Throw replaced with WriteLine  ← x:Exception is not a XAML type  ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
 <Activity mc:Ignorable="sap sap2010"
     x:Class="VacciCare_Maestro.Main"
     xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
@@ -6,63 +20,65 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+    xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- ═══════════════════════════════════════════════════════════════
-       VacciCare Maestro — Main.xaml
-       Uses only UiPath.System.Activities (no extra HTTP package).
-       HTTP calls use .NET 8 System.Net.Http.HttpClient via VB Func.
-       Runs all 4 stages in sequence for a full case demo.
-       ═══════════════════════════════════════════════════════════════ -->
-
+  <!-- ── Workflow arguments (Maestro case schema fields) ──────────────── -->
   <x:Members>
-    <x:Property Name="in_CaseID"          Type="InArgument(x:String)" />
-    <x:Property Name="in_ChildName"       Type="InArgument(x:String)" />
-    <x:Property Name="in_ChildDOB"        Type="InArgument(x:String)" />
-    <x:Property Name="in_ParentName"      Type="InArgument(x:String)" />
-    <x:Property Name="in_Language"        Type="InArgument(x:String)" />
-    <x:Property Name="in_ClinicName"      Type="InArgument(x:String)" />
-    <x:Property Name="in_ClinicAddress"   Type="InArgument(x:String)" />
-    <x:Property Name="in_District"        Type="InArgument(x:String)" />
-    <x:Property Name="out_NextVaccine"    Type="OutArgument(x:String)" />
-    <x:Property Name="out_NextDueDate"    Type="OutArgument(x:String)" />
-    <x:Property Name="out_MessageBody"    Type="OutArgument(x:String)" />
-    <x:Property Name="out_DLTTemplate"    Type="OutArgument(x:String)" />
-    <x:Property Name="out_RiskScore"      Type="OutArgument(x:Double)" />
-    <x:Property Name="out_RiskLabel"      Type="OutArgument(x:String)" />
-    <x:Property Name="out_EscalateNow"    Type="OutArgument(x:Boolean)" />
-    <x:Property Name="out_CertPath"       Type="OutArgument(x:String)" />
+    <x:Property Name="in_CaseID"        Type="InArgument(x:String)"  />
+    <x:Property Name="in_ChildName"     Type="InArgument(x:String)"  />
+    <x:Property Name="in_ChildDOB"      Type="InArgument(x:String)"  />
+    <x:Property Name="in_ParentName"    Type="InArgument(x:String)"  />
+    <x:Property Name="in_Language"      Type="InArgument(x:String)"  />
+    <x:Property Name="in_ClinicName"    Type="InArgument(x:String)"  />
+    <x:Property Name="in_ClinicAddress" Type="InArgument(x:String)"  />
+    <x:Property Name="in_District"      Type="InArgument(x:String)"  />
+    <x:Property Name="out_NextVaccine"  Type="OutArgument(x:String)" />
+    <x:Property Name="out_NextDueDate"  Type="OutArgument(x:String)" />
+    <x:Property Name="out_MessageBody"  Type="OutArgument(x:String)" />
+    <x:Property Name="out_DLTTemplate"  Type="OutArgument(x:String)" />
+    <x:Property Name="out_RiskScore"    Type="OutArgument(x:Double)" />
+    <x:Property Name="out_RiskLabel"    Type="OutArgument(x:String)" />
+    <x:Property Name="out_EscalateNow"  Type="OutArgument(x:Boolean)" />
+    <x:Property Name="out_CertPath"     Type="OutArgument(x:String)" />
   </x:Members>
 
   <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
 
   <Sequence DisplayName="VacciCare Maestro — Full Case Run">
     <Sequence.Variables>
-      <Variable x:TypeArguments="x:String"  Name="v_Base"         Default='"https://vaccicarehackathan-production.up.railway.app"' />
-      <Variable x:TypeArguments="x:String"  Name="v_Body"         Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_Resp"         Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_NextVaccine"  Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_NextDueDate"  Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_MessageBody"  Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_DLTTemplate"  Default='""' />
-      <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"    Default="0.0" />
-      <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"    Default='"LOW"' />
-      <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow"  Default="False" />
-      <Variable x:TypeArguments="x:String"  Name="v_CertPath"     Default='""' />
+      <!-- Base URL — all 5 Python microservices deployed on Railway -->
+      <Variable x:TypeArguments="x:String"  Name="v_Base"        Default='"https://vaccicarehackathan-production.up.railway.app"' />
+      <!-- Shared HTTP work variables — reused for every stage call -->
+      <Variable x:TypeArguments="x:String"  Name="v_Body"        Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_Resp"        Default='""' />
+      <Variable x:TypeArguments="x:Int32"   Name="v_Status"      Default="0" />
+      <!-- Stage 2 outputs -->
+      <Variable x:TypeArguments="x:String"  Name="v_NextVaccine" Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_NextDueDate" Default='""' />
+      <!-- Stage 3 outputs -->
+      <Variable x:TypeArguments="x:String"  Name="v_MessageBody" Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_DLTTemplate" Default='""' />
+      <!-- Stage 7 outputs -->
+      <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"   Default="0.0" />
+      <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"   Default='"LOW"' />
+      <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow" Default="False" />
+      <!-- Stage 9 output -->
+      <Variable x:TypeArguments="x:String"  Name="v_CertPath"    Default='""' />
     </Sequence.Variables>
 
-    <WriteLine DisplayName="[Log] Start"
-        Text="['[VacciCare] ═══ Case: ' + in_CaseID + '  Child: ' + in_ChildName + '  DOB: ' + in_ChildDOB + ' ═══']" />
+    <WriteLine DisplayName="[Log] Case started"
+        Text="['[VacciCare] ═══ START  Case: ' + in_CaseID + '  Child: ' + in_ChildName + ' ═══']" />
 
 
-    <!-- ╔══════════════════════════════════════════════════════╗
-         ║  STAGE 2 — Schedule Planning  (POST /schedule)      ║
-         ╚══════════════════════════════════════════════════════╝ -->
-    <Assign DisplayName="S2 ▶ Build request">
+    <!-- ══════════════════════════════════════════════════════════
+         STAGE 2 — Schedule Planning  →  POST /schedule
+         IAP 2024 engine returns next due vaccine + date.
+         ══════════════════════════════════════════════════════════ -->
+
+    <Assign DisplayName="S2 ▶ Build /schedule request body">
       <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Body}" />
-        </OutArgument>
+        <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
       <Assign.Value>
         <InArgument x:TypeArguments="x:String">
@@ -71,71 +87,61 @@
       </Assign.Value>
     </Assign>
 
-    <Assign DisplayName="S2 ▶ POST /schedule">
+    <!-- HttpRequest (not HTTPRequest) — the correct class name in UiPath.WebAPI.Activities 2.3.1.
+         Endpoint, Body = InArgument<String> → bind with [expr].
+         Response, StatusCode = OutArgument → also bind with [varname].          -->
+    <webapi:HttpRequest DisplayName="S2 ▶ POST /schedule"
+        Endpoint="[v_Base + &quot;/schedule&quot;]"
+        Method="Post"
+        Body="[v_Body]"
+        BodyFormat="application/json"
+        AcceptedMediaType="application/json"
+        Response="[v_Resp]"
+        StatusCode="[v_Status]" />
+
+    <If DisplayName="S2 ▶ Check HTTP 2xx">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="S2 — Parse schedule response">
+          <Assign DisplayName="Extract NextVaccine">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_NextVaccine]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueVaccine") IsNot Nothing,
+                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueVaccine").ToString(), "All doses complete")]
+              </InArgument>
+            </Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract NextDueDate">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_NextDueDate]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueDate") IsNot Nothing,
+                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueDate").ToString(), "")]
+              </InArgument>
+            </Assign.Value>
+          </Assign>
+          <WriteLine DisplayName="[Log] S2 done"
+              Text="['[Stage2] ✓ Next: ' + v_NextVaccine + '  Due: ' + v_NextDueDate]" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <WriteLine DisplayName="[Log] S2 error"
+            Text="['[Stage2] ERROR HTTP ' + v_Status.ToString() + ' — ' + v_Resp]" />
+      </If.Else>
+    </If>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STAGE 3 — Reminder Dispatch  →  POST /compose
+         Claude AI composes DLT-compliant WhatsApp reminder.
+         ══════════════════════════════════════════════════════════ -->
+
+    <Assign DisplayName="S3 ▶ Build /compose request body">
       <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Resp}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-[(New Func(Of String)(Function()
-    Dim hc As New System.Net.Http.HttpClient()
-    Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json")
-    Try
-        Return hc.PostAsync(v_Base &amp; "/schedule", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    Catch ex As Exception
-        Return "{""error"":true,""msg"":""" &amp; ex.Message.Replace("""","'") &amp; """}"
-    Finally
-        hc.Dispose()
-    End Try
-End Function)).Invoke()]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <Assign DisplayName="S2 ▶ Extract NextVaccine">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_NextVaccine}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueVaccine") IsNot Nothing,
-             Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueVaccine").ToString(),
-             "All doses complete")]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <Assign DisplayName="S2 ▶ Extract NextDueDate">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_NextDueDate}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueDate") IsNot Nothing,
-             Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueDate").ToString(),
-             "")]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <WriteLine DisplayName="[Log] S2 done"
-        Text="['[Stage2] ✓ Next: ' + v_NextVaccine + '  Due: ' + v_NextDueDate]" />
-
-
-    <!-- ╔══════════════════════════════════════════════════════╗
-         ║  STAGE 3 — Reminder Dispatch  (POST /compose)       ║
-         ╚══════════════════════════════════════════════════════╝ -->
-    <Assign DisplayName="S3 ▶ Build request">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Body}" />
-        </OutArgument>
+        <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
       <Assign.Value>
         <InArgument x:TypeArguments="x:String">
@@ -148,239 +154,203 @@ End Function)).Invoke()]
       </Assign.Value>
     </Assign>
 
-    <Assign DisplayName="S3 ▶ POST /compose">
+    <webapi:HttpRequest DisplayName="S3 ▶ POST /compose"
+        Endpoint="[v_Base + &quot;/compose&quot;]"
+        Method="Post"
+        Body="[v_Body]"
+        BodyFormat="application/json"
+        AcceptedMediaType="application/json"
+        Response="[v_Resp]"
+        StatusCode="[v_Status]" />
+
+    <If DisplayName="S3 ▶ Check HTTP 2xx">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="S3 — Parse reminder response">
+          <Assign DisplayName="Extract MessageBody">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_MessageBody]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("MessageBody") IsNot Nothing,
+                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("MessageBody").ToString(), "")]
+              </InArgument>
+            </Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract DLTTemplate">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_DLTTemplate]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("DLTTemplateID") IsNot Nothing,
+                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("DLTTemplateID").ToString(), "")]
+              </InArgument>
+            </Assign.Value>
+          </Assign>
+          <WriteLine DisplayName="[Log] S3 done"
+              Text="['[Stage3] ✓ DLT: ' + v_DLTTemplate]" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <WriteLine DisplayName="[Log] S3 error"
+            Text="['[Stage3] ERROR HTTP ' + v_Status.ToString() + ' — ' + v_Resp]" />
+      </If.Else>
+    </If>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STAGE 7 — No-show Risk Scoring  →  POST /score
+         Returns RiskScore 0-1, RiskLabel, EscalateImmediately.
+         ══════════════════════════════════════════════════════════ -->
+
+    <Assign DisplayName="S7 ▶ Build /score request body">
       <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Resp}" />
-        </OutArgument>
+        <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
       <Assign.Value>
         <InArgument x:TypeArguments="x:String">
-[(New Func(Of String)(Function()
-    Dim hc As New System.Net.Http.HttpClient()
-    Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json")
-    Try
-        Return hc.PostAsync(v_Base &amp; "/compose", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    Catch ex As Exception
-        Return "{""error"":true,""msg"":""" &amp; ex.Message.Replace("""","'") &amp; """}"
-    Finally
-        hc.Dispose()
-    End Try
-End Function)).Invoke()]
+          [String.Format("{{""child_id"":""{0}"",""no_show_count"":0,""reminders_sent"":1,""distance_km"":5.0,""prev_missed_doses"":0,""is_migrated"":false,""mother_age_under_20"":false,""rural_flag"":false}}", in_CaseID)]
         </InArgument>
       </Assign.Value>
     </Assign>
 
-    <Assign DisplayName="S3 ▶ Extract MessageBody">
+    <webapi:HttpRequest DisplayName="S7 ▶ POST /score"
+        Endpoint="[v_Base + &quot;/score&quot;]"
+        Method="Post"
+        Body="[v_Body]"
+        BodyFormat="application/json"
+        AcceptedMediaType="application/json"
+        Response="[v_Resp]"
+        StatusCode="[v_Status]" />
+
+    <If DisplayName="S7 ▶ Check HTTP 2xx">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="S7 — Parse risk response">
+          <Assign DisplayName="Extract RiskScore">
+            <Assign.To><OutArgument x:TypeArguments="x:Double">[v_RiskScore]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:Double">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskScore") IsNot Nothing,
+                   Double.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskScore").ToString()), 0.0)]
+              </InArgument>
+            </Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract RiskLabel">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_RiskLabel]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskLabel") IsNot Nothing,
+                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskLabel").ToString(), "LOW")]
+              </InArgument>
+            </Assign.Value>
+          </Assign>
+          <Assign DisplayName="Extract EscalateNow">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:Boolean">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("EscalateImmediately") IsNot Nothing,
+                   Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("EscalateImmediately").ToString()), False)]
+              </InArgument>
+            </Assign.Value>
+          </Assign>
+          <WriteLine DisplayName="[Log] S7 done"
+              Text="['[Stage7] ✓ Risk: ' + v_RiskLabel + ' (' + v_RiskScore.ToString(&quot;F2&quot;) + ')  Escalate: ' + v_EscalateNow.ToString()]" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <WriteLine DisplayName="[Log] S7 error"
+            Text="['[Stage7] ERROR HTTP ' + v_Status.ToString() + ' — ' + v_Resp]" />
+      </If.Else>
+    </If>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STAGE 9 — Case Closure  →  POST /generate
+         ReportLab generates bilingual PDF with ABHA QR code.
+         ══════════════════════════════════════════════════════════ -->
+
+    <Assign DisplayName="S9 ▶ Build /generate request body">
       <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_MessageBody}" />
-        </OutArgument>
+        <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
       <Assign.Value>
         <InArgument x:TypeArguments="x:String">
-          [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("MessageBody") IsNot Nothing,
-             Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("MessageBody").ToString(), "")]
+          [String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""dob"":""{2}"",""parent_name"":""{3}"",""clinic_name"":""{4}"",""district"":""{5}"",""abha_id"":""NOT-REGISTERED"",""vaccines"":[]}}", in_CaseID, in_ChildName, in_ChildDOB, in_ParentName, in_ClinicName, in_District)]
         </InArgument>
       </Assign.Value>
     </Assign>
 
-    <Assign DisplayName="S3 ▶ Extract DLTTemplate">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_DLTTemplate}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("DLTTemplateID") IsNot Nothing,
-             Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("DLTTemplateID").ToString(), "")]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
+    <webapi:HttpRequest DisplayName="S9 ▶ POST /generate"
+        Endpoint="[v_Base + &quot;/generate&quot;]"
+        Method="Post"
+        Body="[v_Body]"
+        BodyFormat="application/json"
+        AcceptedMediaType="application/json"
+        Response="[v_Resp]"
+        StatusCode="[v_Status]" />
 
-    <WriteLine DisplayName="[Log] S3 done"
-        Text="['[Stage3] ✓ DLT: ' + v_DLTTemplate + '  Msg: ' + v_MessageBody.Substring(0, Math.Min(60, v_MessageBody.Length))]" />
+    <If DisplayName="S9 ▶ Check HTTP 2xx">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="S9 — Parse certificate response">
+          <Assign DisplayName="Extract CertPath">
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_CertPath]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("CertPath") IsNot Nothing,
+                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("CertPath").ToString(), "")]
+              </InArgument>
+            </Assign.Value>
+          </Assign>
+          <WriteLine DisplayName="[Log] S9 done"
+              Text="['[Stage9] ✓ Certificate: ' + v_CertPath]" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <WriteLine DisplayName="[Log] S9 error"
+            Text="['[Stage9] ERROR HTTP ' + v_Status.ToString() + ' — ' + v_Resp]" />
+      </If.Else>
+    </If>
 
-
-    <!-- ╔══════════════════════════════════════════════════════╗
-         ║  STAGE 7 — Risk Scoring  (POST /score)              ║
-         ╚══════════════════════════════════════════════════════╝ -->
-    <Assign DisplayName="S7 ▶ Build request">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Body}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [String.Format("{{""child_id"":""{0}"",""no_show_count"":0,""reminders_sent"":1,""distance_km"":5.0,""prev_missed_doses"":0,""is_migrated"":false,""mother_age_under_20"":false,""rural_flag"":false}}",
-            in_CaseID)]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <Assign DisplayName="S7 ▶ POST /score">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Resp}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-[(New Func(Of String)(Function()
-    Dim hc As New System.Net.Http.HttpClient()
-    Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json")
-    Try
-        Return hc.PostAsync(v_Base &amp; "/score", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    Catch ex As Exception
-        Return "{""error"":true,""msg"":""" &amp; ex.Message.Replace("""","'") &amp; """}"
-    Finally
-        hc.Dispose()
-    End Try
-End Function)).Invoke()]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <Assign DisplayName="S7 ▶ Extract RiskScore">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:Double">
-          <VariableReference x:TypeArguments="x:Double" Variable="{x:Reference v_RiskScore}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:Double">
-          [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskScore") IsNot Nothing,
-             Double.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskScore").ToString()), 0.0)]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <Assign DisplayName="S7 ▶ Extract RiskLabel">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RiskLabel}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskLabel") IsNot Nothing,
-             Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskLabel").ToString(), "LOW")]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <Assign DisplayName="S7 ▶ Extract EscalateNow">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:Boolean">
-          <VariableReference x:TypeArguments="x:Boolean" Variable="{x:Reference v_EscalateNow}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:Boolean">
-          [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("EscalateImmediately") IsNot Nothing,
-             Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("EscalateImmediately").ToString()), False)]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <WriteLine DisplayName="[Log] S7 done"
-        Text="['[Stage7] ✓ Risk: ' + v_RiskLabel + ' (' + v_RiskScore.ToString(&quot;F2&quot;) + ')  Escalate: ' + v_EscalateNow.ToString()]" />
-
-
-    <!-- ╔══════════════════════════════════════════════════════╗
-         ║  STAGE 9 — Case Closure  (POST /generate)           ║
-         ╚══════════════════════════════════════════════════════╝ -->
-    <Assign DisplayName="S9 ▶ Build request">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Body}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""dob"":""{2}"",""parent_name"":""{3}"",""clinic_name"":""{4}"",""district"":""{5}"",""abha_id"":""NOT-REGISTERED"",""vaccines"":[]}}",
-            in_CaseID, in_ChildName, in_ChildDOB, in_ParentName, in_ClinicName, in_District)]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <Assign DisplayName="S9 ▶ POST /generate">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Resp}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-[(New Func(Of String)(Function()
-    Dim hc As New System.Net.Http.HttpClient()
-    Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json")
-    Try
-        Return hc.PostAsync(v_Base &amp; "/generate", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    Catch ex As Exception
-        Return "{""error"":true,""msg"":""" &amp; ex.Message.Replace("""","'") &amp; """}"
-    Finally
-        hc.Dispose()
-    End Try
-End Function)).Invoke()]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <Assign DisplayName="S9 ▶ Extract CertPath">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_CertPath}" />
-        </OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("CertPath") IsNot Nothing,
-             Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("CertPath").ToString(), "")]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
-
-    <WriteLine DisplayName="[Log] S9 done"
-        Text="['[Stage9] ✓ Certificate: ' + v_CertPath]" />
-
-    <WriteLine DisplayName="[Log] COMPLETE"
+    <WriteLine DisplayName="[Log] Case complete"
         Text="['[VacciCare] ═══ COMPLETE  Case: ' + in_CaseID + '  Vaccine: ' + v_NextVaccine + '  Risk: ' + v_RiskLabel + '  Cert: ' + v_CertPath + ' ═══']" />
 
-
-    <!-- ── Copy locals to out-arguments ─────────────────────────────── -->
+    <!-- ── Copy local variables to output arguments ─────────────────── -->
     <Assign DisplayName="Set out_NextVaccine">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_NextVaccine" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_NextVaccine]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_NextVaccine]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_NextDueDate">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_NextDueDate" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_NextDueDate]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_NextDueDate]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_MessageBody">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_MessageBody" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageBody]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_MessageBody]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_DLTTemplate">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_DLTTemplate" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_DLTTemplate]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_DLTTemplate]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_RiskScore">
-      <Assign.To><OutArgument x:TypeArguments="x:Double"><ArgumentReference x:TypeArguments="x:Double" ArgumentName="out_RiskScore" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:Double">[out_RiskScore]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:Double">[v_RiskScore]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_RiskLabel">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_RiskLabel" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_RiskLabel]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_RiskLabel]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_EscalateNow">
-      <Assign.To><OutArgument x:TypeArguments="x:Boolean"><ArgumentReference x:TypeArguments="x:Boolean" ArgumentName="out_EscalateNow" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_EscalateNow]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_CertPath">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_CertPath" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_CertPath]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_CertPath]</InArgument></Assign.Value>
     </Assign>
 

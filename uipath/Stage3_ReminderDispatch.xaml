@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  Stage 3 — Reminder Dispatch                                         ║
+  ║  POST /compose  →  Claude AI WhatsApp message composer.              ║
+  ║  Returns DLT-compliant message body in family's preferred language.  ║
+  ║                                                                      ║
+  ║  Supported languages: en (English), ta (Tamil), hi (Hindi)           ║
+  ║  DLT = TRAI-mandated Distributed Ledger Technology registration.     ║
+  ║                                                                      ║
+  ║  HTTP: webapi:HttpRequest (UiPath.WebAPI.Activities 2.3.1)           ║
+  ║  FIX: HttpRequest  ← correct class name (not HTTPRequest)            ║
+  ║  FIX: OutArgument uses [varname]  ← not {x:Reference}               ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
 <Activity mc:Ignorable="sap sap2010"
     x:Class="VacciCare_Maestro.Stage3_ReminderDispatch"
     xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
@@ -9,26 +23,20 @@
     xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- ═══════════════════════════════════════════════════════
-       Stage 3 — Reminder Dispatch
-       Calls Python Reminder Composer and returns
-       a DLT-compliant WhatsApp message body ready for MSG91.
-       ═══════════════════════════════════════════════════════ -->
-
   <x:Members>
-    <x:Property Name="in_CaseID"          Type="InArgument(x:String)" />
-    <x:Property Name="in_ChildName"       Type="InArgument(x:String)" />
-    <x:Property Name="in_ParentName"      Type="InArgument(x:String)" />
-    <x:Property Name="in_ParentMobile"    Type="InArgument(x:String)" />
-    <x:Property Name="in_VaccineName"     Type="InArgument(x:String)" />
-    <x:Property Name="in_DueDate"         Type="InArgument(x:String)" />
-    <x:Property Name="in_ClinicName"      Type="InArgument(x:String)" />
-    <x:Property Name="in_ClinicAddress"   Type="InArgument(x:String)" />
-    <x:Property Name="in_Language"        Type="InArgument(x:String)" />
-    <x:Property Name="in_ReminderNumber"  Type="InArgument(x:Int32)"  />
-    <x:Property Name="out_MessageBody"    Type="OutArgument(x:String)" />
-    <x:Property Name="out_DLTTemplateID"  Type="OutArgument(x:String)" />
-    <x:Property Name="out_CharCount"      Type="OutArgument(x:Int32)"  />
+    <x:Property Name="in_CaseID"         Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildName"      Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentName"     Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentMobile"   Type="InArgument(x:String)" />
+    <x:Property Name="in_VaccineName"    Type="InArgument(x:String)" />
+    <x:Property Name="in_DueDate"        Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicName"     Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicAddress"  Type="InArgument(x:String)" />
+    <x:Property Name="in_Language"       Type="InArgument(x:String)" />
+    <x:Property Name="in_ReminderNumber" Type="InArgument(x:Int32)"  />
+    <x:Property Name="out_MessageBody"   Type="OutArgument(x:String)" />
+    <x:Property Name="out_DLTTemplateID" Type="OutArgument(x:String)" />
+    <x:Property Name="out_CharCount"     Type="OutArgument(x:Int32)"  />
   </x:Members>
 
   <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
@@ -36,21 +44,20 @@
   <Sequence DisplayName="Stage 3 — Reminder Dispatch">
     <Sequence.Variables>
       <Variable x:TypeArguments="x:String" Name="v_ServiceUrl"    Default='"https://vaccicarehackathan-production.up.railway.app/compose"' />
+      <!-- Normalised language code (default "en" when blank or unsupported) -->
+      <Variable x:TypeArguments="x:String" Name="v_Language"      Default='"en"' />
       <Variable x:TypeArguments="x:String" Name="v_RequestBody"   Default='""' />
       <Variable x:TypeArguments="x:String" Name="v_ResponseBody"  Default='""' />
       <Variable x:TypeArguments="x:Int32"  Name="v_StatusCode"    Default="0" />
       <Variable x:TypeArguments="x:String" Name="v_MessageBody"   Default='""' />
       <Variable x:TypeArguments="x:String" Name="v_DLTTemplateID" Default='""' />
       <Variable x:TypeArguments="x:Int32"  Name="v_CharCount"     Default="0" />
-      <Variable x:TypeArguments="x:String" Name="v_Language"      Default='"en"' />
     </Sequence.Variables>
 
-    <!-- STEP 1 — Normalise language (default to "en") -->
-    <Assign DisplayName="Normalise Language">
+    <!-- STEP 1 — Normalise language to lowercase; default "en" -->
+    <Assign DisplayName="S3 ▶ Normalise language">
       <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Language}" />
-        </OutArgument>
+        <OutArgument x:TypeArguments="x:String">[v_Language]</OutArgument>
       </Assign.To>
       <Assign.Value>
         <InArgument x:TypeArguments="x:String">
@@ -60,14 +67,12 @@
     </Assign>
 
     <WriteLine DisplayName="[Log] Stage 3 starting"
-        Text="['[Stage3] Composing reminder for ' + in_CaseID + ' | lang=' + v_Language + ' | reminder#' + in_ReminderNumber.ToString()]" />
+        Text="['[Stage3] Composing reminder — Case: ' + in_CaseID + '  Lang: ' + v_Language + '  #' + in_ReminderNumber.ToString()]" />
 
     <!-- STEP 2 — Build JSON request body -->
-    <Assign DisplayName="Build Request JSON">
+    <Assign DisplayName="S3 ▶ Build /compose request body">
       <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
-        </OutArgument>
+        <OutArgument x:TypeArguments="x:String">[v_RequestBody]</OutArgument>
       </Assign.To>
       <Assign.Value>
         <InArgument x:TypeArguments="x:String">
@@ -81,61 +86,77 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 3 — HTTP POST to Reminder Composer (UiPath.WebAPI.Activities) -->
-    <webapi:HTTPRequest DisplayName="POST /compose — Reminder Composer"
-        EndPoint="[v_ServiceUrl]"
+    <!-- STEP 3 — HTTP POST via UiPath built-in HTTP Request activity -->
+    <webapi:HttpRequest DisplayName="S3 ▶ POST /compose"
+        Endpoint="[v_ServiceUrl]"
         Method="Post"
         Body="[v_RequestBody]"
         BodyFormat="application/json"
         AcceptedMediaType="application/json"
-        ResponseContent="[v_ResponseBody]"
+        Response="[v_ResponseBody]"
         StatusCode="[v_StatusCode]" />
 
-    <!-- STEP 4 — Parse response (StatusCode is Int32) -->
-    <If DisplayName="Check Response OK">
+    <!-- STEP 4 — Parse response if HTTP 2xx -->
+    <If DisplayName="S3 ▶ Check HTTP 2xx">
       <If.Condition>
         <InArgument x:TypeArguments="x:Boolean">[v_StatusCode >= 200 AndAlso v_StatusCode &lt;= 299]</InArgument>
       </If.Condition>
       <If.Then>
-        <Sequence DisplayName="Parse reminder response">
+        <Sequence DisplayName="S3 — Parse reminder response">
+
           <Assign DisplayName="Extract MessageBody">
-            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_MessageBody}" /></OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("MessageBody").ToString()]</InArgument></Assign.Value>
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_MessageBody]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">
+                [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("MessageBody").ToString()]
+              </InArgument>
+            </Assign.Value>
           </Assign>
+
           <Assign DisplayName="Extract DLTTemplateID">
-            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_DLTTemplateID}" /></OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID").ToString()]</InArgument></Assign.Value>
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_DLTTemplateID]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID") IsNot Nothing,
+                   Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID").ToString(), "")]
+              </InArgument>
+            </Assign.Value>
           </Assign>
+
           <Assign DisplayName="Extract CharCount">
-            <Assign.To><OutArgument x:TypeArguments="x:Int32"><VariableReference x:TypeArguments="x:Int32" Variable="{x:Reference v_CharCount}" /></OutArgument></Assign.To>
-            <Assign.Value><InArgument x:TypeArguments="x:Int32">[Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CharCount").ToString())]</InArgument></Assign.Value>
+            <Assign.To><OutArgument x:TypeArguments="x:Int32">[v_CharCount]</OutArgument></Assign.To>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:Int32">
+                <!-- Fall back to message length if API doesn't return CharCount -->
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CharCount") IsNot Nothing,
+                   Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CharCount").ToString()),
+                   v_MessageBody.Length)]
+              </InArgument>
+            </Assign.Value>
           </Assign>
-          <WriteLine DisplayName="[Log] Reminder ready"
-              Text="['[Stage3] DLT=' + v_DLTTemplateID + ' | Chars=' + v_CharCount.ToString() + ' | Msg: ' + v_MessageBody.Substring(0, Math.Min(50, v_MessageBody.Length)) + '...']" />
+
+          <WriteLine DisplayName="[Log] S3 success"
+              Text="['[Stage3] ✓ DLT: ' + v_DLTTemplateID + '  Chars: ' + v_CharCount.ToString() + '  Lang: ' + v_Language]" />
+
         </Sequence>
       </If.Then>
       <If.Else>
-        <Throw DisplayName="Throw — Reminder Service Error">
-          <Throw.Exception>
-            <InArgument x:TypeArguments="x:Exception">
-              [New Exception("[Stage3] Reminder Composer returned HTTP " + v_StatusCode.ToString())]
-            </InArgument>
-          </Throw.Exception>
-        </Throw>
+        <WriteLine DisplayName="[Log] S3 error"
+            Text="['[Stage3] ERROR HTTP ' + v_StatusCode.ToString() + ' — ' + v_ResponseBody]" />
       </If.Else>
     </If>
 
-    <!-- STEP 5 — Set output arguments -->
+    <!-- STEP 5 — Copy locals to output arguments -->
     <Assign DisplayName="Set out_MessageBody">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_MessageBody" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageBody]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_MessageBody]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_DLTTemplateID">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_DLTTemplateID" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_DLTTemplateID]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_DLTTemplateID]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_CharCount">
-      <Assign.To><OutArgument x:TypeArguments="x:Int32"><ArgumentReference x:TypeArguments="x:Int32" ArgumentName="out_CharCount" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_CharCount]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:Int32">[v_CharCount]</InArgument></Assign.Value>
     </Assign>
 

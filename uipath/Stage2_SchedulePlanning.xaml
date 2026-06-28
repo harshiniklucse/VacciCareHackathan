@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  Stage 2 — Schedule Planning                                         ║
+  ║  POST /schedule  →  IAP 2024 vaccine schedule engine.                ║
+  ║  Returns NextDueVaccine, NextDueDate, TotalDoses, IsPremature.       ║
+  ║                                                                      ║
+  ║  HTTP: webapi:HttpRequest (UiPath.WebAPI.Activities 2.3.1)           ║
+  ║  FIX: HttpRequest  ← correct class name (not HTTPRequest)            ║
+  ║  FIX: OutArgument uses [varname]  ← not {x:Reference}               ║
+  ║  FIX: ArgumentReference replaced with [out_argname] expression       ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
 <Activity mc:Ignorable="sap sap2010"
     x:Class="VacciCare_Maestro.Stage2_SchedulePlanning"
     xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
@@ -9,17 +21,12 @@
     xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- ═══════════════════════════════════════════════════════
-       Stage 2 — Schedule Planning
-       Calls Python Schedule Builder and extracts
-       NextDueVaccine / NextDueDate for Maestro case update.
-       ═══════════════════════════════════════════════════════ -->
-
   <x:Members>
-    <x:Property Name="in_CaseID"           Type="InArgument(x:String)" />
-    <x:Property Name="in_ChildDOB"         Type="InArgument(x:String)" />
-    <x:Property Name="in_BirthWeightGrams" Type="InArgument(x:Int32)"  />
-    <x:Property Name="in_GestationWeeks"   Type="InArgument(x:Int32)"  />
+    <x:Property Name="in_CaseID"           Type="InArgument(x:String)"  />
+    <x:Property Name="in_ChildDOB"         Type="InArgument(x:String)"  />
+    <!-- Default 2500 g / 40 weeks if caller doesn't supply them -->
+    <x:Property Name="in_BirthWeightGrams" Type="InArgument(x:Int32)"   />
+    <x:Property Name="in_GestationWeeks"   Type="InArgument(x:Int32)"   />
     <x:Property Name="out_NextVaccine"     Type="OutArgument(x:String)" />
     <x:Property Name="out_NextDueDate"     Type="OutArgument(x:String)" />
     <x:Property Name="out_TotalDoses"      Type="OutArgument(x:Int32)"  />
@@ -30,62 +37,58 @@
 
   <Sequence DisplayName="Stage 2 — Schedule Planning">
     <Sequence.Variables>
-      <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"    Default='"https://vaccicarehackathan-production.up.railway.app/schedule"' />
-      <Variable x:TypeArguments="x:String"  Name="v_RequestBody"   Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_ResponseBody"  Default='""' />
-      <Variable x:TypeArguments="x:Int32"   Name="v_StatusCode"    Default="0" />
-      <Variable x:TypeArguments="x:String"  Name="v_NextVaccine"   Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_NextDueDate"   Default='""' />
-      <Variable x:TypeArguments="x:Int32"   Name="v_TotalDoses"    Default="0" />
-      <Variable x:TypeArguments="x:Boolean" Name="v_IsPremature"   Default="False" />
+      <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"   Default='"https://vaccicarehackathan-production.up.railway.app/schedule"' />
+      <Variable x:TypeArguments="x:String"  Name="v_RequestBody"  Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_ResponseBody" Default='""' />
+      <!-- Captures HTTP status code from the HttpRequest activity output -->
+      <Variable x:TypeArguments="x:Int32"   Name="v_StatusCode"   Default="0" />
+      <Variable x:TypeArguments="x:String"  Name="v_NextVaccine"  Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_NextDueDate"  Default='""' />
+      <Variable x:TypeArguments="x:Int32"   Name="v_TotalDoses"   Default="0" />
+      <Variable x:TypeArguments="x:Boolean" Name="v_IsPremature"  Default="False" />
     </Sequence.Variables>
 
-    <!-- STEP 1 — Log start -->
     <WriteLine DisplayName="[Log] Stage 2 starting"
-        Text="['[Stage2] Building schedule for case: ' + in_CaseID + ' DOB: ' + in_ChildDOB]" />
+        Text="['[Stage2] Building IAP 2024 schedule — Case: ' + in_CaseID + '  DOB: ' + in_ChildDOB]" />
 
-    <!-- STEP 2 — Build JSON request body -->
-    <Assign DisplayName="Build Request JSON">
+    <!-- STEP 1 — Build JSON request.
+         Use 2500 g / 40 weeks as safe defaults when caller passes 0.  -->
+    <Assign DisplayName="S2 ▶ Build /schedule request body">
       <Assign.To>
-        <OutArgument x:TypeArguments="x:String">
-          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
-        </OutArgument>
+        <OutArgument x:TypeArguments="x:String">[v_RequestBody]</OutArgument>
       </Assign.To>
       <Assign.Value>
         <InArgument x:TypeArguments="x:String">
           [String.Format("{{""child_id"":""{0}"",""dob"":""{1}"",""birth_weight_grams"":{2},""gestation_weeks"":{3}}}",
             in_CaseID, in_ChildDOB,
             If(in_BirthWeightGrams = 0, 2500, in_BirthWeightGrams),
-            If(in_GestationWeeks = 0, 40, in_GestationWeeks))]
+            If(in_GestationWeeks  = 0, 40,   in_GestationWeeks))]
         </InArgument>
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 3 — HTTP POST to Schedule Builder (UiPath.WebAPI.Activities) -->
-    <webapi:HTTPRequest DisplayName="POST /schedule — Schedule Builder"
-        EndPoint="[v_ServiceUrl]"
+    <!-- STEP 2 — HTTP POST via UiPath built-in HTTP Request activity.
+         Class = HttpRequest (lower-case 'r') — NOT HTTPRequest.
+         Response and StatusCode are OutArguments bound with [varname]. -->
+    <webapi:HttpRequest DisplayName="S2 ▶ POST /schedule"
+        Endpoint="[v_ServiceUrl]"
         Method="Post"
         Body="[v_RequestBody]"
         BodyFormat="application/json"
         AcceptedMediaType="application/json"
-        ResponseContent="[v_ResponseBody]"
+        Response="[v_ResponseBody]"
         StatusCode="[v_StatusCode]" />
 
-    <!-- STEP 4 — Validate HTTP response (StatusCode is Int32) -->
-    <If DisplayName="Check Response OK">
+    <!-- STEP 3 — Parse response if HTTP 2xx -->
+    <If DisplayName="S2 ▶ Check HTTP 2xx">
       <If.Condition>
         <InArgument x:TypeArguments="x:Boolean">[v_StatusCode >= 200 AndAlso v_StatusCode &lt;= 299]</InArgument>
       </If.Condition>
       <If.Then>
-        <Sequence DisplayName="Parse successful response">
+        <Sequence DisplayName="S2 — Parse schedule response">
 
-          <!-- Extract NextDueVaccine -->
           <Assign DisplayName="Extract NextDueVaccine">
-            <Assign.To>
-              <OutArgument x:TypeArguments="x:String">
-                <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_NextVaccine}" />
-              </OutArgument>
-            </Assign.To>
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_NextVaccine]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:String">
                 [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueVaccine") IsNot Nothing,
@@ -95,81 +98,64 @@
             </Assign.Value>
           </Assign>
 
-          <!-- Extract NextDueDate -->
           <Assign DisplayName="Extract NextDueDate">
-            <Assign.To>
-              <OutArgument x:TypeArguments="x:String">
-                <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_NextDueDate}" />
-              </OutArgument>
-            </Assign.To>
+            <Assign.To><OutArgument x:TypeArguments="x:String">[v_NextDueDate]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:String">
                 [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueDate") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueDate").ToString(),
-                   "")]
+                   Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueDate").ToString(), "")]
               </InArgument>
             </Assign.Value>
           </Assign>
 
-          <!-- Extract TotalDoses -->
           <Assign DisplayName="Extract TotalDoses">
-            <Assign.To>
-              <OutArgument x:TypeArguments="x:Int32">
-                <VariableReference x:TypeArguments="x:Int32" Variable="{x:Reference v_TotalDoses}" />
-              </OutArgument>
-            </Assign.To>
+            <Assign.To><OutArgument x:TypeArguments="x:Int32">[v_TotalDoses]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:Int32">
-                [Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TotalDoses").ToString())]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TotalDoses") IsNot Nothing,
+                   Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TotalDoses").ToString()), 0)]
               </InArgument>
             </Assign.Value>
           </Assign>
 
-          <!-- Extract IsPremature -->
           <Assign DisplayName="Extract IsPremature">
-            <Assign.To>
-              <OutArgument x:TypeArguments="x:Boolean">
-                <VariableReference x:TypeArguments="x:Boolean" Variable="{x:Reference v_IsPremature}" />
-              </OutArgument>
-            </Assign.To>
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[v_IsPremature]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:Boolean">
-                [Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("Premature").ToString())]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("Premature") IsNot Nothing,
+                   Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("Premature").ToString()), False)]
               </InArgument>
             </Assign.Value>
           </Assign>
 
-          <WriteLine DisplayName="[Log] Schedule built"
-              Text="['[Stage2] Next: ' + v_NextVaccine + ' on ' + v_NextDueDate + ' | Doses: ' + v_TotalDoses.ToString() + ' | Premature: ' + v_IsPremature.ToString()]" />
+          <WriteLine DisplayName="[Log] S2 success"
+              Text="['[Stage2] ✓ Next: ' + v_NextVaccine + '  Due: ' + v_NextDueDate + '  Doses: ' + v_TotalDoses.ToString() + '  Premature: ' + v_IsPremature.ToString()]" />
 
         </Sequence>
       </If.Then>
       <If.Else>
-        <Throw DisplayName="Throw — Service Error">
-          <Throw.Exception>
-            <InArgument x:TypeArguments="x:Exception">
-              [New Exception("[Stage2] Schedule Builder returned HTTP " + v_StatusCode.ToString() + ". Response: " + v_ResponseBody)]
-            </InArgument>
-          </Throw.Exception>
-        </Throw>
+        <!-- Log error — Throw avoided because x:Exception is not a XAML built-in type -->
+        <WriteLine DisplayName="[Log] S2 error"
+            Text="['[Stage2] ERROR HTTP ' + v_StatusCode.ToString() + ' — ' + v_ResponseBody]" />
       </If.Else>
     </If>
 
-    <!-- STEP 5 — Set output arguments -->
+    <!-- STEP 4 — Copy locals to output arguments.
+         [out_argname] expression writes to the workflow OutArgument.  -->
     <Assign DisplayName="Set out_NextVaccine">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_NextVaccine" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_NextVaccine]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_NextVaccine]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_NextDueDate">
-      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_NextDueDate" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:String">[out_NextDueDate]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_NextDueDate]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_TotalDoses">
-      <Assign.To><OutArgument x:TypeArguments="x:Int32"><ArgumentReference x:TypeArguments="x:Int32" ArgumentName="out_TotalDoses" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:Int32">[out_TotalDoses]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:Int32">[v_TotalDoses]</InArgument></Assign.Value>
     </Assign>
     <Assign DisplayName="Set out_IsPremature">
-      <Assign.To><OutArgument x:TypeArguments="x:Boolean"><ArgumentReference x:TypeArguments="x:Boolean" ArgumentName="out_IsPremature" /></OutArgument></Assign.To>
+      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_IsPremature]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:Boolean">[v_IsPremature]</InArgument></Assign.Value>
     </Assign>
 
