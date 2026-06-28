@@ -1,4 +1,4 @@
-<Activity mc:Ignorable="sap sap2010" x:Class="VacciCare_Maestro.Main" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation" xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation" xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib" xmlns:sco="clr-namespace:System.Collections.ObjectModel;assembly=System.Private.CoreLib" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<Activity mc:Ignorable="sap sap2010" x:Class="VacciCare_Maestro.Main" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation" xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation" xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib" xmlns:sco="clr-namespace:System.Collections.ObjectModel;assembly=System.Private.CoreLib" xmlns:ui="http://schemas.uipath.com/workflow/activities" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
     <x:Property Name="in_CaseID" Type="InArgument(x:String)" />
     <x:Property Name="in_ChildName" Type="InArgument(x:String)" />
@@ -29,6 +29,8 @@
       <x:String>System.Linq</x:String>
       <x:String>UiPath.Core</x:String>
       <x:String>UiPath.Core.Activities</x:String>
+      <x:String>UiPath.Web</x:String>
+      <x:String>UiPath.Web.Activities</x:String>
     </sco:Collection>
   </TextExpression.NamespacesForImplementation>
   <TextExpression.ReferencesForImplementation>
@@ -37,6 +39,8 @@
       <AssemblyReference>System.Linq</AssemblyReference>
       <AssemblyReference>System.ObjectModel</AssemblyReference>
       <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+      <AssemblyReference>UiPath.Web</AssemblyReference>
+      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
     </sco:Collection>
   </TextExpression.ReferencesForImplementation>
   <Sequence DisplayName="VacciCare Maestro — Full Case Run" sap2010:WorkflowViewState.IdRef="Sequence_5">
@@ -51,6 +55,7 @@
       <Variable x:TypeArguments="x:Double" Default="0" Name="v_RiskScore" />
       <Variable x:TypeArguments="x:String" Default="&quot;LOW&quot;" Name="v_RiskLabel" />
       <Variable x:TypeArguments="x:Boolean" Default="False" Name="v_EscalateNow" />
+      <Variable x:TypeArguments="x:Int32" Default="0" Name="v_StatusCode" />
       <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_CertPath" />
     </Sequence.Variables>
     <sap:WorkflowViewStateService.ViewState>
@@ -67,15 +72,35 @@
         <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""dob"":""{1}"",""birth_weight_grams"":2500,""gestation_weeks"":40}}", in_CaseID, in_ChildDOB)]</InArgument>
       </Assign.Value>
     </Assign>
-    <Assign DisplayName="S2 POST /schedule" sap2010:WorkflowViewState.IdRef="Assign_2">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">[v_Resp]</OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">[(New Func(Of String)(Function() Dim hc As New System.Net.Http.HttpClient() Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json") Try Return hc.PostAsync(v_Base + "/schedule", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult() Catch ex As Exception Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}" Finally hc.Dispose() End Try End Function)).Invoke()]</InArgument>
-      </Assign.Value>
-    </Assign>
-    <If Condition="[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)(&quot;NextDueVaccine&quot;) IsNot Nothing]" DisplayName="S2 Parse response" sap2010:WorkflowViewState.IdRef="If_1">
+    <ui:HttpClient DisplayName="S2 POST /schedule"
+        EndPoint="[v_Base + &quot;/schedule&quot;]"
+        Method="POST"
+        Body="[v_Body]"
+        BodyFormat="application/json"
+        AcceptFormat="ANY"
+        AuthenticationType="None"
+        EnableSSLVerification="True"
+        TimeoutMS="30000"
+        ContinueOnError="True"
+        Result="[v_Resp]"
+        StatusCode="[v_StatusCode]">
+      <ui:HttpClient.Attachments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Attachments>
+      <ui:HttpClient.Cookies>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Cookies>
+      <ui:HttpClient.Headers>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Headers>
+      <ui:HttpClient.Parameters>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Parameters>
+      <ui:HttpClient.UrlSegments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.UrlSegments>
+    </ui:HttpClient>
+    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S2 Parse response" sap2010:WorkflowViewState.IdRef="If_1">
       <If.Then>
         <Sequence DisplayName="S2 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_1">
           <Assign DisplayName="S2 Extract NextVaccine" sap2010:WorkflowViewState.IdRef="Assign_3">
@@ -109,15 +134,35 @@
         <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""parent_name"":""{2}"",""vaccine_name"":""{3}"",""due_date"":""{4}"",""clinic_name"":""{5}"",""clinic_address"":""{6}"",""language"":""{7}"",""reminder_number"":1}}", in_CaseID, in_ChildName, in_ParentName, v_NextVaccine, v_NextDueDate, in_ClinicName, in_ClinicAddress, If(String.IsNullOrWhiteSpace(in_Language), "en", in_Language.ToLower().Trim()))]</InArgument>
       </Assign.Value>
     </Assign>
-    <Assign DisplayName="S3 POST /compose" sap2010:WorkflowViewState.IdRef="Assign_6">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">[v_Resp]</OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">[(New Func(Of String)(Function() Dim hc As New System.Net.Http.HttpClient() Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json") Try Return hc.PostAsync(v_Base + "/compose", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult() Catch ex As Exception Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}" Finally hc.Dispose() End Try End Function)).Invoke()]</InArgument>
-      </Assign.Value>
-    </Assign>
-    <If Condition="[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)(&quot;MessageBody&quot;) IsNot Nothing]" DisplayName="S3 Parse response" sap2010:WorkflowViewState.IdRef="If_2">
+    <ui:HttpClient DisplayName="S3 POST /compose"
+        EndPoint="[v_Base + &quot;/compose&quot;]"
+        Method="POST"
+        Body="[v_Body]"
+        BodyFormat="application/json"
+        AcceptFormat="ANY"
+        AuthenticationType="None"
+        EnableSSLVerification="True"
+        TimeoutMS="30000"
+        ContinueOnError="True"
+        Result="[v_Resp]"
+        StatusCode="[v_StatusCode]">
+      <ui:HttpClient.Attachments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Attachments>
+      <ui:HttpClient.Cookies>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Cookies>
+      <ui:HttpClient.Headers>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Headers>
+      <ui:HttpClient.Parameters>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Parameters>
+      <ui:HttpClient.UrlSegments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.UrlSegments>
+    </ui:HttpClient>
+    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S3 Parse response" sap2010:WorkflowViewState.IdRef="If_2">
       <If.Then>
         <Sequence DisplayName="S3 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_2">
           <Assign DisplayName="S3 Extract MessageBody" sap2010:WorkflowViewState.IdRef="Assign_7">
@@ -151,15 +196,35 @@
         <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""no_show_count"":0,""reminders_sent"":1,""distance_km"":5.0,""prev_missed_doses"":0,""is_migrated"":false,""mother_age_under_20"":false,""rural_flag"":false}}", in_CaseID)]</InArgument>
       </Assign.Value>
     </Assign>
-    <Assign DisplayName="S7 POST /score" sap2010:WorkflowViewState.IdRef="Assign_10">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">[v_Resp]</OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">[(New Func(Of String)(Function() Dim hc As New System.Net.Http.HttpClient() Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json") Try Return hc.PostAsync(v_Base + "/score", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult() Catch ex As Exception Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}" Finally hc.Dispose() End Try End Function)).Invoke()]</InArgument>
-      </Assign.Value>
-    </Assign>
-    <If Condition="[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)(&quot;RiskScore&quot;) IsNot Nothing]" DisplayName="S7 Parse response" sap2010:WorkflowViewState.IdRef="If_3">
+    <ui:HttpClient DisplayName="S7 POST /score"
+        EndPoint="[v_Base + &quot;/score&quot;]"
+        Method="POST"
+        Body="[v_Body]"
+        BodyFormat="application/json"
+        AcceptFormat="ANY"
+        AuthenticationType="None"
+        EnableSSLVerification="True"
+        TimeoutMS="30000"
+        ContinueOnError="True"
+        Result="[v_Resp]"
+        StatusCode="[v_StatusCode]">
+      <ui:HttpClient.Attachments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Attachments>
+      <ui:HttpClient.Cookies>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Cookies>
+      <ui:HttpClient.Headers>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Headers>
+      <ui:HttpClient.Parameters>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Parameters>
+      <ui:HttpClient.UrlSegments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.UrlSegments>
+    </ui:HttpClient>
+    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S7 Parse response" sap2010:WorkflowViewState.IdRef="If_3">
       <If.Then>
         <Sequence DisplayName="S7 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_3">
           <Assign DisplayName="S7 Extract RiskScore" sap2010:WorkflowViewState.IdRef="Assign_11">
@@ -201,15 +266,35 @@
         <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""dob"":""{2}"",""parent_name"":""{3}"",""clinic_name"":""{4}"",""district"":""{5}"",""abha_id"":""NOT-REGISTERED"",""vaccines"":[]}}", in_CaseID, in_ChildName, in_ChildDOB, in_ParentName, in_ClinicName, in_District)]</InArgument>
       </Assign.Value>
     </Assign>
-    <Assign DisplayName="S9 POST /generate" sap2010:WorkflowViewState.IdRef="Assign_15">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">[v_Resp]</OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">[(New Func(Of String)(Function() Dim hc As New System.Net.Http.HttpClient() Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json") Try Return hc.PostAsync(v_Base + "/generate", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult() Catch ex As Exception Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}" Finally hc.Dispose() End Try End Function)).Invoke()]</InArgument>
-      </Assign.Value>
-    </Assign>
-    <If Condition="[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)(&quot;CertPath&quot;) IsNot Nothing]" DisplayName="S9 Parse response" sap2010:WorkflowViewState.IdRef="If_4">
+    <ui:HttpClient DisplayName="S9 POST /generate"
+        EndPoint="[v_Base + &quot;/generate&quot;]"
+        Method="POST"
+        Body="[v_Body]"
+        BodyFormat="application/json"
+        AcceptFormat="ANY"
+        AuthenticationType="None"
+        EnableSSLVerification="True"
+        TimeoutMS="30000"
+        ContinueOnError="True"
+        Result="[v_Resp]"
+        StatusCode="[v_StatusCode]">
+      <ui:HttpClient.Attachments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Attachments>
+      <ui:HttpClient.Cookies>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Cookies>
+      <ui:HttpClient.Headers>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Headers>
+      <ui:HttpClient.Parameters>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Parameters>
+      <ui:HttpClient.UrlSegments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.UrlSegments>
+    </ui:HttpClient>
+    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S9 Parse response" sap2010:WorkflowViewState.IdRef="If_4">
       <If.Then>
         <Sequence DisplayName="S9 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_4">
           <Assign DisplayName="S9 Extract CertPath" sap2010:WorkflowViewState.IdRef="Assign_16">

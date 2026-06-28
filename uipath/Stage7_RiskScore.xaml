@@ -1,14 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Stage 7 — No-show Risk Scoring
-  POST /score → logistic regression dropout risk model.
-  Returns RiskScore (0-1), RiskLabel, EscalateImmediately, TopFactor.
-
-  HTTP: Func(Of String) / System.Net.Http.HttpClient (.NET 8 BCL).
-  Log strings: XML attribute delimited with ' so VB string literals use " correctly.
-  OutArgument: [varname] VB expression (NOT {x:Reference}).
-  JSON booleans must be lowercase: use If(flag,"true","false") not flag.ToString().
--->
 <Activity mc:Ignorable="sap sap2010"
     x:Class="VacciCare_Maestro.Stage7_RiskScore"
     xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
@@ -16,6 +6,8 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+    xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+    xmlns:ui="http://schemas.uipath.com/workflow/activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <x:Members>
@@ -40,6 +32,7 @@
       <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"   Default='"https://vaccicarehackathan-production.up.railway.app/score"' />
       <Variable x:TypeArguments="x:String"  Name="v_RequestBody"  Default='""' />
       <Variable x:TypeArguments="x:String"  Name="v_ResponseBody" Default='""' />
+      <Variable x:TypeArguments="x:Int32"   Name="v_StatusCode"   Default="0" />
       <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"    Default="0.0" />
       <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"    Default='"LOW"' />
       <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow"  Default="False" />
@@ -69,33 +62,41 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 2: HTTP POST -->
-    <Assign DisplayName="S7 POST /score">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">[v_ResponseBody]</OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-[(New Func(Of String)(Function()
-    Dim hc As New System.Net.Http.HttpClient()
-    Dim ct As New System.Net.Http.StringContent(v_RequestBody, System.Text.Encoding.UTF8, "application/json")
-    Try
-        Return hc.PostAsync(v_ServiceUrl, ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    Catch ex As Exception
-        Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}"
-    Finally
-        hc.Dispose()
-    End Try
-End Function)).Invoke()]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
+    <!-- STEP 2: HTTP POST using built-in HTTP Request activity -->
+    <ui:HttpClient DisplayName="S7 POST /score"
+        EndPoint="[v_ServiceUrl]"
+        Method="POST"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptFormat="ANY"
+        AuthenticationType="None"
+        EnableSSLVerification="True"
+        TimeoutMS="30000"
+        ContinueOnError="True"
+        Result="[v_ResponseBody]"
+        StatusCode="[v_StatusCode]">
+      <ui:HttpClient.Attachments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Attachments>
+      <ui:HttpClient.Cookies>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Cookies>
+      <ui:HttpClient.Headers>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Headers>
+      <ui:HttpClient.Parameters>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Parameters>
+      <ui:HttpClient.UrlSegments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.UrlSegments>
+    </ui:HttpClient>
 
     <!-- STEP 3: Parse response -->
     <If DisplayName="S7 Parse response">
       <If.Condition>
         <InArgument x:TypeArguments="x:Boolean">
-          [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskScore") IsNot Nothing]
+          [v_StatusCode >= 200 AndAlso v_StatusCode &lt; 300]
         </InArgument>
       </If.Condition>
       <If.Then>
@@ -104,7 +105,7 @@ End Function)).Invoke()]
             <Assign.To><OutArgument x:TypeArguments="x:Double">[v_RiskScore]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:Double">
-                [Double.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskScore").ToString())]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskScore") IsNot Nothing, Double.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskScore").ToString()), 0.0)]
               </InArgument>
             </Assign.Value>
           </Assign>
@@ -149,7 +150,7 @@ End Function)).Invoke()]
       </If.Then>
       <If.Else>
         <WriteLine DisplayName="[Log] S7 error"
-            Text='["[Stage7] ERROR: " + v_ResponseBody]' />
+            Text='["[Stage7] ERROR HTTP " + v_StatusCode.ToString() + ": " + v_ResponseBody]' />
       </If.Else>
     </If>
 

@@ -1,13 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Stage 2 — Schedule Planning
-  POST /schedule → IAP 2024 vaccine schedule engine.
-  Returns NextDueVaccine, NextDueDate, TotalDoses, IsPremature.
-
-  HTTP: Func(Of String) / System.Net.Http.HttpClient (.NET 8 BCL).
-  Log strings: XML attribute delimited with ' so VB string literals use " correctly.
-  OutArgument: [varname] VB expression (NOT {x:Reference}).
--->
 <Activity mc:Ignorable="sap sap2010"
     x:Class="VacciCare_Maestro.Stage2_SchedulePlanning"
     xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
@@ -15,6 +6,8 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+    xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib"
+    xmlns:ui="http://schemas.uipath.com/workflow/activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <x:Members>
@@ -35,6 +28,7 @@
       <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"   Default='"https://vaccicarehackathan-production.up.railway.app/schedule"' />
       <Variable x:TypeArguments="x:String"  Name="v_RequestBody"  Default='""' />
       <Variable x:TypeArguments="x:String"  Name="v_ResponseBody" Default='""' />
+      <Variable x:TypeArguments="x:Int32"   Name="v_StatusCode"   Default="0" />
       <Variable x:TypeArguments="x:String"  Name="v_NextVaccine"  Default='""' />
       <Variable x:TypeArguments="x:String"  Name="v_NextDueDate"  Default='""' />
       <Variable x:TypeArguments="x:Int32"   Name="v_TotalDoses"   Default="0" />
@@ -59,33 +53,41 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 2: HTTP POST — Func closure returns response string or {"error":true} -->
-    <Assign DisplayName="S2 POST /schedule">
-      <Assign.To>
-        <OutArgument x:TypeArguments="x:String">[v_ResponseBody]</OutArgument>
-      </Assign.To>
-      <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-[(New Func(Of String)(Function()
-    Dim hc As New System.Net.Http.HttpClient()
-    Dim ct As New System.Net.Http.StringContent(v_RequestBody, System.Text.Encoding.UTF8, "application/json")
-    Try
-        Return hc.PostAsync(v_ServiceUrl, ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    Catch ex As Exception
-        Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}"
-    Finally
-        hc.Dispose()
-    End Try
-End Function)).Invoke()]
-        </InArgument>
-      </Assign.Value>
-    </Assign>
+    <!-- STEP 2: HTTP POST using built-in HTTP Request activity -->
+    <ui:HttpClient DisplayName="S2 POST /schedule"
+        EndPoint="[v_ServiceUrl]"
+        Method="POST"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptFormat="ANY"
+        AuthenticationType="None"
+        EnableSSLVerification="True"
+        TimeoutMS="30000"
+        ContinueOnError="True"
+        Result="[v_ResponseBody]"
+        StatusCode="[v_StatusCode]">
+      <ui:HttpClient.Attachments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Attachments>
+      <ui:HttpClient.Cookies>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Cookies>
+      <ui:HttpClient.Headers>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Headers>
+      <ui:HttpClient.Parameters>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.Parameters>
+      <ui:HttpClient.UrlSegments>
+        <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+      </ui:HttpClient.UrlSegments>
+    </ui:HttpClient>
 
     <!-- STEP 3: Parse response -->
     <If DisplayName="S2 Parse response">
       <If.Condition>
         <InArgument x:TypeArguments="x:Boolean">
-          [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueVaccine") IsNot Nothing]
+          [v_StatusCode >= 200 AndAlso v_StatusCode &lt; 300]
         </InArgument>
       </If.Condition>
       <If.Then>
@@ -94,7 +96,7 @@ End Function)).Invoke()]
             <Assign.To><OutArgument x:TypeArguments="x:String">[v_NextVaccine]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:String">
-                [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueVaccine").ToString()]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueVaccine") IsNot Nothing, Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueVaccine").ToString(), "")]
               </InArgument>
             </Assign.Value>
           </Assign>
@@ -128,7 +130,7 @@ End Function)).Invoke()]
       </If.Then>
       <If.Else>
         <WriteLine DisplayName="[Log] S2 error"
-            Text='["[Stage2] ERROR: " + v_ResponseBody]' />
+            Text='["[Stage2] ERROR HTTP " + v_StatusCode.ToString() + ": " + v_ResponseBody]' />
       </If.Else>
     </If>
 
