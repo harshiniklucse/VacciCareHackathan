@@ -1,17 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ╔══════════════════════════════════════════════════════════════════════╗
-  ║  Stage 3 — Reminder Dispatch                                         ║
-  ║  POST /compose  →  Claude AI WhatsApp message composer.              ║
-  ║  Returns DLT-compliant message body in family's preferred language.  ║
-  ║                                                                      ║
-  ║  Supported languages: en (English), ta (Tamil), hi (Hindi)           ║
-  ║  DLT = TRAI-mandated Distributed Ledger Technology registration.     ║
-  ║                                                                      ║
-  ║  HTTP: webapi:HttpRequest (UiPath.WebAPI.Activities 2.3.1)           ║
-  ║  FIX: HttpRequest  ← correct class name (not HTTPRequest)            ║
-  ║  FIX: OutArgument uses [varname]  ← not {x:Reference}               ║
-  ╚══════════════════════════════════════════════════════════════════════╝
+  Stage 3 — Reminder Dispatch
+  POST /compose → Claude AI DLT-compliant WhatsApp reminder composer.
+  Returns MessageBody (en/ta/hi), DLTTemplateID, CharCount.
+
+  HTTP: Func(Of String) / System.Net.Http.HttpClient (.NET 8 BCL).
+  Log strings: XML attribute delimited with ' so VB string literals use " correctly.
+  OutArgument: [varname] VB expression (NOT {x:Reference}).
 -->
 <Activity mc:Ignorable="sap sap2010"
     x:Class="VacciCare_Maestro.Stage3_ReminderDispatch"
@@ -20,7 +15,6 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
-    xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <x:Members>
@@ -44,18 +38,16 @@
   <Sequence DisplayName="Stage 3 — Reminder Dispatch">
     <Sequence.Variables>
       <Variable x:TypeArguments="x:String" Name="v_ServiceUrl"    Default='"https://vaccicarehackathan-production.up.railway.app/compose"' />
-      <!-- Normalised language code (default "en" when blank or unsupported) -->
       <Variable x:TypeArguments="x:String" Name="v_Language"      Default='"en"' />
       <Variable x:TypeArguments="x:String" Name="v_RequestBody"   Default='""' />
       <Variable x:TypeArguments="x:String" Name="v_ResponseBody"  Default='""' />
-      <Variable x:TypeArguments="x:Int32"  Name="v_StatusCode"    Default="0" />
       <Variable x:TypeArguments="x:String" Name="v_MessageBody"   Default='""' />
       <Variable x:TypeArguments="x:String" Name="v_DLTTemplateID" Default='""' />
       <Variable x:TypeArguments="x:Int32"  Name="v_CharCount"     Default="0" />
     </Sequence.Variables>
 
-    <!-- STEP 1 — Normalise language to lowercase; default "en" -->
-    <Assign DisplayName="S3 ▶ Normalise language">
+    <!-- STEP 1: Normalise language — default "en" if blank -->
+    <Assign DisplayName="S3 Normalise language">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Language]</OutArgument>
       </Assign.To>
@@ -67,10 +59,10 @@
     </Assign>
 
     <WriteLine DisplayName="[Log] Stage 3 starting"
-        Text="['[Stage3] Composing reminder — Case: ' + in_CaseID + '  Lang: ' + v_Language + '  #' + in_ReminderNumber.ToString()]" />
+        Text='["[Stage3] Composing reminder for case: " + in_CaseID + " lang: " + v_Language]' />
 
-    <!-- STEP 2 — Build JSON request body -->
-    <Assign DisplayName="S3 ▶ Build /compose request body">
+    <!-- STEP 2: Build JSON request body -->
+    <Assign DisplayName="S3 Build request body">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_RequestBody]</OutArgument>
       </Assign.To>
@@ -86,25 +78,38 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 3 — HTTP POST via UiPath built-in HTTP Request activity -->
-    <webapi:HttpRequest DisplayName="S3 ▶ POST /compose"
-        Endpoint="[v_ServiceUrl]"
-        Method="Post"
-        Body="[v_RequestBody]"
-        BodyFormat="application/json"
-        AcceptedMediaType="application/json"
-        Response="[v_ResponseBody]"
-        StatusCode="[v_StatusCode]" />
+    <!-- STEP 3: HTTP POST -->
+    <Assign DisplayName="S3 POST /compose">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[v_ResponseBody]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+[(New Func(Of String)(Function()
+    Dim hc As New System.Net.Http.HttpClient()
+    Dim ct As New System.Net.Http.StringContent(v_RequestBody, System.Text.Encoding.UTF8, "application/json")
+    Try
+        Return hc.PostAsync(v_ServiceUrl, ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    Catch ex As Exception
+        Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}"
+    Finally
+        hc.Dispose()
+    End Try
+End Function)).Invoke()]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
 
-    <!-- STEP 4 — Parse response if HTTP 2xx -->
-    <If DisplayName="S3 ▶ Check HTTP 2xx">
+    <!-- STEP 4: Parse response -->
+    <If DisplayName="S3 Parse response">
       <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode >= 200 AndAlso v_StatusCode &lt;= 299]</InArgument>
+        <InArgument x:TypeArguments="x:Boolean">
+          [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("MessageBody") IsNot Nothing]
+        </InArgument>
       </If.Condition>
       <If.Then>
-        <Sequence DisplayName="S3 — Parse reminder response">
-
-          <Assign DisplayName="Extract MessageBody">
+        <Sequence DisplayName="S3 Extract fields">
+          <Assign DisplayName="S3 Extract MessageBody">
             <Assign.To><OutArgument x:TypeArguments="x:String">[v_MessageBody]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:String">
@@ -112,41 +117,33 @@
               </InArgument>
             </Assign.Value>
           </Assign>
-
-          <Assign DisplayName="Extract DLTTemplateID">
+          <Assign DisplayName="S3 Extract DLTTemplateID">
             <Assign.To><OutArgument x:TypeArguments="x:String">[v_DLTTemplateID]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID").ToString(), "")]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID") IsNot Nothing, Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID").ToString(), "")]
               </InArgument>
             </Assign.Value>
           </Assign>
-
-          <Assign DisplayName="Extract CharCount">
+          <Assign DisplayName="S3 Extract CharCount">
             <Assign.To><OutArgument x:TypeArguments="x:Int32">[v_CharCount]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:Int32">
-                <!-- Fall back to message length if API doesn't return CharCount -->
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CharCount") IsNot Nothing,
-                   Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CharCount").ToString()),
-                   v_MessageBody.Length)]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CharCount") IsNot Nothing, Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CharCount").ToString()), v_MessageBody.Length)]
               </InArgument>
             </Assign.Value>
           </Assign>
-
           <WriteLine DisplayName="[Log] S3 success"
-              Text="['[Stage3] ✓ DLT: ' + v_DLTTemplateID + '  Chars: ' + v_CharCount.ToString() + '  Lang: ' + v_Language]" />
-
+              Text='["[Stage3] DLT template: " + v_DLTTemplateID + " chars: " + v_CharCount.ToString()]' />
         </Sequence>
       </If.Then>
       <If.Else>
         <WriteLine DisplayName="[Log] S3 error"
-            Text="['[Stage3] ERROR HTTP ' + v_StatusCode.ToString() + ' — ' + v_ResponseBody]" />
+            Text='["[Stage3] ERROR: " + v_ResponseBody]' />
       </If.Else>
     </If>
 
-    <!-- STEP 5 — Copy locals to output arguments -->
+    <!-- STEP 5: Copy locals to output arguments -->
     <Assign DisplayName="Set out_MessageBody">
       <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageBody]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_MessageBody]</InArgument></Assign.Value>

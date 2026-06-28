@@ -1,358 +1,296 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-  ╔══════════════════════════════════════════════════════════════════════╗
-  ║  VacciCare Maestro — Main.xaml                                       ║
-  ║  Orchestrates all 4 AI-powered stages via Railway microservices.     ║
-  ║                                                                      ║
-  ║  HTTP calls use the built-in UiPath HTTP Request activity            ║
-  ║  (UiPath.WebAPI.Activities 2.3.1 — already in project.json).        ║
-  ║                                                                      ║
-  ║  KEY FIXES vs earlier versions:                                      ║
-  ║  • webapi:HttpRequest  ← correct class name (not HTTPRequest)        ║
-  ║  • OutArgument uses [varname] VB expr  ← not {x:Reference}          ║
-  ║  • Throw replaced with WriteLine  ← x:Exception is not a XAML type  ║
-  ╚══════════════════════════════════════════════════════════════════════╝
--->
-<Activity mc:Ignorable="sap sap2010"
-    x:Class="VacciCare_Maestro.Main"
-    xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
-    xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
-    xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
-    xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-
-  <!-- ── Workflow arguments (Maestro case schema fields) ──────────────── -->
+<Activity mc:Ignorable="sap sap2010" x:Class="VacciCare_Maestro.Main" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation" xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation" xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib" xmlns:sco="clr-namespace:System.Collections.ObjectModel;assembly=System.Private.CoreLib" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
-    <x:Property Name="in_CaseID"        Type="InArgument(x:String)"  />
-    <x:Property Name="in_ChildName"     Type="InArgument(x:String)"  />
-    <x:Property Name="in_ChildDOB"      Type="InArgument(x:String)"  />
-    <x:Property Name="in_ParentName"    Type="InArgument(x:String)"  />
-    <x:Property Name="in_Language"      Type="InArgument(x:String)"  />
-    <x:Property Name="in_ClinicName"    Type="InArgument(x:String)"  />
-    <x:Property Name="in_ClinicAddress" Type="InArgument(x:String)"  />
-    <x:Property Name="in_District"      Type="InArgument(x:String)"  />
-    <x:Property Name="out_NextVaccine"  Type="OutArgument(x:String)" />
-    <x:Property Name="out_NextDueDate"  Type="OutArgument(x:String)" />
-    <x:Property Name="out_MessageBody"  Type="OutArgument(x:String)" />
-    <x:Property Name="out_DLTTemplate"  Type="OutArgument(x:String)" />
-    <x:Property Name="out_RiskScore"    Type="OutArgument(x:Double)" />
-    <x:Property Name="out_RiskLabel"    Type="OutArgument(x:String)" />
-    <x:Property Name="out_EscalateNow"  Type="OutArgument(x:Boolean)" />
-    <x:Property Name="out_CertPath"     Type="OutArgument(x:String)" />
+    <x:Property Name="in_CaseID" Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildName" Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildDOB" Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentName" Type="InArgument(x:String)" />
+    <x:Property Name="in_Language" Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicName" Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicAddress" Type="InArgument(x:String)" />
+    <x:Property Name="in_District" Type="InArgument(x:String)" />
+    <x:Property Name="out_NextVaccine" Type="OutArgument(x:String)" />
+    <x:Property Name="out_NextDueDate" Type="OutArgument(x:String)" />
+    <x:Property Name="out_MessageBody" Type="OutArgument(x:String)" />
+    <x:Property Name="out_DLTTemplate" Type="OutArgument(x:String)" />
+    <x:Property Name="out_RiskScore" Type="OutArgument(x:Double)" />
+    <x:Property Name="out_RiskLabel" Type="OutArgument(x:String)" />
+    <x:Property Name="out_EscalateNow" Type="OutArgument(x:Boolean)" />
+    <x:Property Name="out_CertPath" Type="OutArgument(x:String)" />
   </x:Members>
-
-  <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
-
-  <Sequence DisplayName="VacciCare Maestro — Full Case Run">
+  <sap2010:WorkflowViewState.IdRef>ActivityBuilder_1</sap2010:WorkflowViewState.IdRef>
+  <VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</VisualBasic.Settings>
+  <TextExpression.NamespacesForImplementation>
+    <sco:Collection x:TypeArguments="x:String">
+      <x:String>GlobalConstantsNamespace</x:String>
+      <x:String>GlobalVariablesNamespace</x:String>
+      <x:String>System</x:String>
+      <x:String>System.Collections.Generic</x:String>
+      <x:String>System.Collections.ObjectModel</x:String>
+      <x:String>System.Linq</x:String>
+      <x:String>UiPath.Core</x:String>
+      <x:String>UiPath.Core.Activities</x:String>
+    </sco:Collection>
+  </TextExpression.NamespacesForImplementation>
+  <TextExpression.ReferencesForImplementation>
+    <sco:Collection x:TypeArguments="AssemblyReference">
+      <AssemblyReference>System.ComponentModel.TypeConverter</AssemblyReference>
+      <AssemblyReference>System.Linq</AssemblyReference>
+      <AssemblyReference>System.ObjectModel</AssemblyReference>
+      <AssemblyReference>UiPath.System.Activities</AssemblyReference>
+    </sco:Collection>
+  </TextExpression.ReferencesForImplementation>
+  <Sequence DisplayName="VacciCare Maestro — Full Case Run" sap2010:WorkflowViewState.IdRef="Sequence_5">
     <Sequence.Variables>
-      <!-- Base URL — all 5 Python microservices deployed on Railway -->
-      <Variable x:TypeArguments="x:String"  Name="v_Base"        Default='"https://vaccicarehackathan-production.up.railway.app"' />
-      <!-- Shared HTTP work variables — reused for every stage call -->
-      <Variable x:TypeArguments="x:String"  Name="v_Body"        Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_Resp"        Default='""' />
-      <Variable x:TypeArguments="x:Int32"   Name="v_Status"      Default="0" />
-      <!-- Stage 2 outputs -->
-      <Variable x:TypeArguments="x:String"  Name="v_NextVaccine" Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_NextDueDate" Default='""' />
-      <!-- Stage 3 outputs -->
-      <Variable x:TypeArguments="x:String"  Name="v_MessageBody" Default='""' />
-      <Variable x:TypeArguments="x:String"  Name="v_DLTTemplate" Default='""' />
-      <!-- Stage 7 outputs -->
-      <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"   Default="0.0" />
-      <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"   Default='"LOW"' />
-      <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow" Default="False" />
-      <!-- Stage 9 output -->
-      <Variable x:TypeArguments="x:String"  Name="v_CertPath"    Default='""' />
+      <Variable x:TypeArguments="x:String" Default="&quot;https://vaccicarehackathan-production.up.railway.app&quot;" Name="v_Base" />
+      <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_Body" />
+      <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_Resp" />
+      <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_NextVaccine" />
+      <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_NextDueDate" />
+      <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_MessageBody" />
+      <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_DLTTemplate" />
+      <Variable x:TypeArguments="x:Double" Default="0" Name="v_RiskScore" />
+      <Variable x:TypeArguments="x:String" Default="&quot;LOW&quot;" Name="v_RiskLabel" />
+      <Variable x:TypeArguments="x:Boolean" Default="False" Name="v_EscalateNow" />
+      <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_CertPath" />
     </Sequence.Variables>
-
-    <WriteLine DisplayName="[Log] Case started"
-        Text="['[VacciCare] ═══ START  Case: ' + in_CaseID + '  Child: ' + in_ChildName + ' ═══']" />
-
-
-    <!-- ══════════════════════════════════════════════════════════
-         STAGE 2 — Schedule Planning  →  POST /schedule
-         IAP 2024 engine returns next due vaccine + date.
-         ══════════════════════════════════════════════════════════ -->
-
-    <Assign DisplayName="S2 ▶ Build /schedule request body">
+    <sap:WorkflowViewStateService.ViewState>
+      <scg:Dictionary x:TypeArguments="x:String, x:Object">
+        <x:Boolean x:Key="IsExpanded">True</x:Boolean>
+      </scg:Dictionary>
+    </sap:WorkflowViewStateService.ViewState>
+    <WriteLine DisplayName="[Log] Case started" sap2010:WorkflowViewState.IdRef="WriteLine_1" Text="[&quot;[VacciCare] START Case: &quot; + in_CaseID + &quot; Child: &quot; + in_ChildName]" />
+    <Assign DisplayName="S2 Build request body" sap2010:WorkflowViewState.IdRef="Assign_1">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
       <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [String.Format("{{""child_id"":""{0}"",""dob"":""{1}"",""birth_weight_grams"":2500,""gestation_weeks"":40}}", in_CaseID, in_ChildDOB)]
-        </InArgument>
+        <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""dob"":""{1}"",""birth_weight_grams"":2500,""gestation_weeks"":40}}", in_CaseID, in_ChildDOB)]</InArgument>
       </Assign.Value>
     </Assign>
-
-    <!-- HttpRequest (not HTTPRequest) — the correct class name in UiPath.WebAPI.Activities 2.3.1.
-         Endpoint, Body = InArgument<String> → bind with [expr].
-         Response, StatusCode = OutArgument → also bind with [varname].          -->
-    <webapi:HttpRequest DisplayName="S2 ▶ POST /schedule"
-        Endpoint="[v_Base + &quot;/schedule&quot;]"
-        Method="Post"
-        Body="[v_Body]"
-        BodyFormat="application/json"
-        AcceptedMediaType="application/json"
-        Response="[v_Resp]"
-        StatusCode="[v_Status]" />
-
-    <If DisplayName="S2 ▶ Check HTTP 2xx">
-      <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
-      </If.Condition>
+    <Assign DisplayName="S2 POST /schedule" sap2010:WorkflowViewState.IdRef="Assign_2">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[v_Resp]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[(New Func(Of String)(Function() Dim hc As New System.Net.Http.HttpClient() Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json") Try Return hc.PostAsync(v_Base + "/schedule", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult() Catch ex As Exception Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}" Finally hc.Dispose() End Try End Function)).Invoke()]</InArgument>
+      </Assign.Value>
+    </Assign>
+    <If Condition="[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)(&quot;NextDueVaccine&quot;) IsNot Nothing]" DisplayName="S2 Parse response" sap2010:WorkflowViewState.IdRef="If_1">
       <If.Then>
-        <Sequence DisplayName="S2 — Parse schedule response">
-          <Assign DisplayName="Extract NextVaccine">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[v_NextVaccine]</OutArgument></Assign.To>
+        <Sequence DisplayName="S2 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_1">
+          <Assign DisplayName="S2 Extract NextVaccine" sap2010:WorkflowViewState.IdRef="Assign_3">
+            <Assign.To>
+              <OutArgument x:TypeArguments="x:String">[v_NextVaccine]</OutArgument>
+            </Assign.To>
             <Assign.Value>
-              <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueVaccine") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueVaccine").ToString(), "All doses complete")]
-              </InArgument>
+              <InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueVaccine").ToString()]</InArgument>
             </Assign.Value>
           </Assign>
-          <Assign DisplayName="Extract NextDueDate">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[v_NextDueDate]</OutArgument></Assign.To>
+          <Assign DisplayName="S2 Extract NextDueDate" sap2010:WorkflowViewState.IdRef="Assign_4">
+            <Assign.To>
+              <OutArgument x:TypeArguments="x:String">[v_NextDueDate]</OutArgument>
+            </Assign.To>
             <Assign.Value>
-              <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueDate") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueDate").ToString(), "")]
-              </InArgument>
+              <InArgument x:TypeArguments="x:String">[If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueDate") IsNot Nothing, Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("NextDueDate").ToString(), "")]</InArgument>
             </Assign.Value>
           </Assign>
-          <WriteLine DisplayName="[Log] S2 done"
-              Text="['[Stage2] ✓ Next: ' + v_NextVaccine + '  Due: ' + v_NextDueDate]" />
+          <WriteLine DisplayName="[Log] S2 done" sap2010:WorkflowViewState.IdRef="WriteLine_2" Text="[&quot;[Stage2] Next vaccine: &quot; + v_NextVaccine + &quot; Due: &quot; + v_NextDueDate]" />
         </Sequence>
       </If.Then>
       <If.Else>
-        <WriteLine DisplayName="[Log] S2 error"
-            Text="['[Stage2] ERROR HTTP ' + v_Status.ToString() + ' — ' + v_Resp]" />
+        <WriteLine DisplayName="[Log] S2 error" sap2010:WorkflowViewState.IdRef="WriteLine_3" Text="[&quot;[Stage2] ERROR: &quot; + v_Resp]" />
       </If.Else>
     </If>
-
-
-    <!-- ══════════════════════════════════════════════════════════
-         STAGE 3 — Reminder Dispatch  →  POST /compose
-         Claude AI composes DLT-compliant WhatsApp reminder.
-         ══════════════════════════════════════════════════════════ -->
-
-    <Assign DisplayName="S3 ▶ Build /compose request body">
+    <Assign DisplayName="S3 Build request body" sap2010:WorkflowViewState.IdRef="Assign_5">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
       <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""parent_name"":""{2}"",""vaccine_name"":""{3}"",""due_date"":""{4}"",""clinic_name"":""{5}"",""clinic_address"":""{6}"",""language"":""{7}"",""reminder_number"":1}}",
-            in_CaseID, in_ChildName, in_ParentName,
-            v_NextVaccine, v_NextDueDate,
-            in_ClinicName, in_ClinicAddress,
-            If(String.IsNullOrWhiteSpace(in_Language), "en", in_Language.ToLower().Trim()))]
-        </InArgument>
+        <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""parent_name"":""{2}"",""vaccine_name"":""{3}"",""due_date"":""{4}"",""clinic_name"":""{5}"",""clinic_address"":""{6}"",""language"":""{7}"",""reminder_number"":1}}", in_CaseID, in_ChildName, in_ParentName, v_NextVaccine, v_NextDueDate, in_ClinicName, in_ClinicAddress, If(String.IsNullOrWhiteSpace(in_Language), "en", in_Language.ToLower().Trim()))]</InArgument>
       </Assign.Value>
     </Assign>
-
-    <webapi:HttpRequest DisplayName="S3 ▶ POST /compose"
-        Endpoint="[v_Base + &quot;/compose&quot;]"
-        Method="Post"
-        Body="[v_Body]"
-        BodyFormat="application/json"
-        AcceptedMediaType="application/json"
-        Response="[v_Resp]"
-        StatusCode="[v_Status]" />
-
-    <If DisplayName="S3 ▶ Check HTTP 2xx">
-      <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
-      </If.Condition>
+    <Assign DisplayName="S3 POST /compose" sap2010:WorkflowViewState.IdRef="Assign_6">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[v_Resp]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[(New Func(Of String)(Function() Dim hc As New System.Net.Http.HttpClient() Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json") Try Return hc.PostAsync(v_Base + "/compose", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult() Catch ex As Exception Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}" Finally hc.Dispose() End Try End Function)).Invoke()]</InArgument>
+      </Assign.Value>
+    </Assign>
+    <If Condition="[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)(&quot;MessageBody&quot;) IsNot Nothing]" DisplayName="S3 Parse response" sap2010:WorkflowViewState.IdRef="If_2">
       <If.Then>
-        <Sequence DisplayName="S3 — Parse reminder response">
-          <Assign DisplayName="Extract MessageBody">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[v_MessageBody]</OutArgument></Assign.To>
+        <Sequence DisplayName="S3 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_2">
+          <Assign DisplayName="S3 Extract MessageBody" sap2010:WorkflowViewState.IdRef="Assign_7">
+            <Assign.To>
+              <OutArgument x:TypeArguments="x:String">[v_MessageBody]</OutArgument>
+            </Assign.To>
             <Assign.Value>
-              <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("MessageBody") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("MessageBody").ToString(), "")]
-              </InArgument>
+              <InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("MessageBody").ToString()]</InArgument>
             </Assign.Value>
           </Assign>
-          <Assign DisplayName="Extract DLTTemplate">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[v_DLTTemplate]</OutArgument></Assign.To>
+          <Assign DisplayName="S3 Extract DLTTemplate" sap2010:WorkflowViewState.IdRef="Assign_8">
+            <Assign.To>
+              <OutArgument x:TypeArguments="x:String">[v_DLTTemplate]</OutArgument>
+            </Assign.To>
             <Assign.Value>
-              <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("DLTTemplateID") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("DLTTemplateID").ToString(), "")]
-              </InArgument>
+              <InArgument x:TypeArguments="x:String">[If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("DLTTemplateID") IsNot Nothing, Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("DLTTemplateID").ToString(), "")]</InArgument>
             </Assign.Value>
           </Assign>
-          <WriteLine DisplayName="[Log] S3 done"
-              Text="['[Stage3] ✓ DLT: ' + v_DLTTemplate]" />
+          <WriteLine DisplayName="[Log] S3 done" sap2010:WorkflowViewState.IdRef="WriteLine_4" Text="[&quot;[Stage3] DLT template: &quot; + v_DLTTemplate]" />
         </Sequence>
       </If.Then>
       <If.Else>
-        <WriteLine DisplayName="[Log] S3 error"
-            Text="['[Stage3] ERROR HTTP ' + v_Status.ToString() + ' — ' + v_Resp]" />
+        <WriteLine DisplayName="[Log] S3 error" sap2010:WorkflowViewState.IdRef="WriteLine_5" Text="[&quot;[Stage3] ERROR: &quot; + v_Resp]" />
       </If.Else>
     </If>
-
-
-    <!-- ══════════════════════════════════════════════════════════
-         STAGE 7 — No-show Risk Scoring  →  POST /score
-         Returns RiskScore 0-1, RiskLabel, EscalateImmediately.
-         ══════════════════════════════════════════════════════════ -->
-
-    <Assign DisplayName="S7 ▶ Build /score request body">
+    <Assign DisplayName="S7 Build request body" sap2010:WorkflowViewState.IdRef="Assign_9">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
       <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [String.Format("{{""child_id"":""{0}"",""no_show_count"":0,""reminders_sent"":1,""distance_km"":5.0,""prev_missed_doses"":0,""is_migrated"":false,""mother_age_under_20"":false,""rural_flag"":false}}", in_CaseID)]
-        </InArgument>
+        <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""no_show_count"":0,""reminders_sent"":1,""distance_km"":5.0,""prev_missed_doses"":0,""is_migrated"":false,""mother_age_under_20"":false,""rural_flag"":false}}", in_CaseID)]</InArgument>
       </Assign.Value>
     </Assign>
-
-    <webapi:HttpRequest DisplayName="S7 ▶ POST /score"
-        Endpoint="[v_Base + &quot;/score&quot;]"
-        Method="Post"
-        Body="[v_Body]"
-        BodyFormat="application/json"
-        AcceptedMediaType="application/json"
-        Response="[v_Resp]"
-        StatusCode="[v_Status]" />
-
-    <If DisplayName="S7 ▶ Check HTTP 2xx">
-      <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
-      </If.Condition>
+    <Assign DisplayName="S7 POST /score" sap2010:WorkflowViewState.IdRef="Assign_10">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[v_Resp]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[(New Func(Of String)(Function() Dim hc As New System.Net.Http.HttpClient() Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json") Try Return hc.PostAsync(v_Base + "/score", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult() Catch ex As Exception Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}" Finally hc.Dispose() End Try End Function)).Invoke()]</InArgument>
+      </Assign.Value>
+    </Assign>
+    <If Condition="[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)(&quot;RiskScore&quot;) IsNot Nothing]" DisplayName="S7 Parse response" sap2010:WorkflowViewState.IdRef="If_3">
       <If.Then>
-        <Sequence DisplayName="S7 — Parse risk response">
-          <Assign DisplayName="Extract RiskScore">
-            <Assign.To><OutArgument x:TypeArguments="x:Double">[v_RiskScore]</OutArgument></Assign.To>
+        <Sequence DisplayName="S7 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_3">
+          <Assign DisplayName="S7 Extract RiskScore" sap2010:WorkflowViewState.IdRef="Assign_11">
+            <Assign.To>
+              <OutArgument x:TypeArguments="x:Double">[v_RiskScore]</OutArgument>
+            </Assign.To>
             <Assign.Value>
-              <InArgument x:TypeArguments="x:Double">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskScore") IsNot Nothing,
-                   Double.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskScore").ToString()), 0.0)]
-              </InArgument>
+              <InArgument x:TypeArguments="x:Double">[Double.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskScore").ToString())]</InArgument>
             </Assign.Value>
           </Assign>
-          <Assign DisplayName="Extract RiskLabel">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[v_RiskLabel]</OutArgument></Assign.To>
+          <Assign DisplayName="S7 Extract RiskLabel" sap2010:WorkflowViewState.IdRef="Assign_12">
+            <Assign.To>
+              <OutArgument x:TypeArguments="x:String">[v_RiskLabel]</OutArgument>
+            </Assign.To>
             <Assign.Value>
-              <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskLabel") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskLabel").ToString(), "LOW")]
-              </InArgument>
+              <InArgument x:TypeArguments="x:String">[If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskLabel") IsNot Nothing, Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("RiskLabel").ToString(), "LOW")]</InArgument>
             </Assign.Value>
           </Assign>
-          <Assign DisplayName="Extract EscalateNow">
-            <Assign.To><OutArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</OutArgument></Assign.To>
+          <Assign DisplayName="S7 Extract EscalateNow" sap2010:WorkflowViewState.IdRef="Assign_13">
+            <Assign.To>
+              <OutArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</OutArgument>
+            </Assign.To>
             <Assign.Value>
-              <InArgument x:TypeArguments="x:Boolean">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("EscalateImmediately") IsNot Nothing,
-                   Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("EscalateImmediately").ToString()), False)]
-              </InArgument>
+              <InArgument x:TypeArguments="x:Boolean">[If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("EscalateImmediately") IsNot Nothing, Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("EscalateImmediately").ToString()), False)]</InArgument>
             </Assign.Value>
           </Assign>
-          <WriteLine DisplayName="[Log] S7 done"
-              Text="['[Stage7] ✓ Risk: ' + v_RiskLabel + ' (' + v_RiskScore.ToString(&quot;F2&quot;) + ')  Escalate: ' + v_EscalateNow.ToString()]" />
+          <WriteLine DisplayName="[Log] S7 done" sap2010:WorkflowViewState.IdRef="WriteLine_6" Text="[&quot;[Stage7] Risk: &quot; + v_RiskLabel + &quot; Escalate: &quot; + v_EscalateNow.ToString()]" />
         </Sequence>
       </If.Then>
       <If.Else>
-        <WriteLine DisplayName="[Log] S7 error"
-            Text="['[Stage7] ERROR HTTP ' + v_Status.ToString() + ' — ' + v_Resp]" />
+        <WriteLine DisplayName="[Log] S7 error" sap2010:WorkflowViewState.IdRef="WriteLine_7" Text="[&quot;[Stage7] ERROR: &quot; + v_Resp]" />
       </If.Else>
     </If>
-
-
-    <!-- ══════════════════════════════════════════════════════════
-         STAGE 9 — Case Closure  →  POST /generate
-         ReportLab generates bilingual PDF with ABHA QR code.
-         ══════════════════════════════════════════════════════════ -->
-
-    <Assign DisplayName="S9 ▶ Build /generate request body">
+    <Assign DisplayName="S9 Build request body" sap2010:WorkflowViewState.IdRef="Assign_14">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
       <Assign.Value>
-        <InArgument x:TypeArguments="x:String">
-          [String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""dob"":""{2}"",""parent_name"":""{3}"",""clinic_name"":""{4}"",""district"":""{5}"",""abha_id"":""NOT-REGISTERED"",""vaccines"":[]}}", in_CaseID, in_ChildName, in_ChildDOB, in_ParentName, in_ClinicName, in_District)]
-        </InArgument>
+        <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""dob"":""{2}"",""parent_name"":""{3}"",""clinic_name"":""{4}"",""district"":""{5}"",""abha_id"":""NOT-REGISTERED"",""vaccines"":[]}}", in_CaseID, in_ChildName, in_ChildDOB, in_ParentName, in_ClinicName, in_District)]</InArgument>
       </Assign.Value>
     </Assign>
-
-    <webapi:HttpRequest DisplayName="S9 ▶ POST /generate"
-        Endpoint="[v_Base + &quot;/generate&quot;]"
-        Method="Post"
-        Body="[v_Body]"
-        BodyFormat="application/json"
-        AcceptedMediaType="application/json"
-        Response="[v_Resp]"
-        StatusCode="[v_Status]" />
-
-    <If DisplayName="S9 ▶ Check HTTP 2xx">
-      <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
-      </If.Condition>
+    <Assign DisplayName="S9 POST /generate" sap2010:WorkflowViewState.IdRef="Assign_15">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[v_Resp]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[(New Func(Of String)(Function() Dim hc As New System.Net.Http.HttpClient() Dim ct As New System.Net.Http.StringContent(v_Body, System.Text.Encoding.UTF8, "application/json") Try Return hc.PostAsync(v_Base + "/generate", ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult() Catch ex As Exception Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}" Finally hc.Dispose() End Try End Function)).Invoke()]</InArgument>
+      </Assign.Value>
+    </Assign>
+    <If Condition="[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)(&quot;CertPath&quot;) IsNot Nothing]" DisplayName="S9 Parse response" sap2010:WorkflowViewState.IdRef="If_4">
       <If.Then>
-        <Sequence DisplayName="S9 — Parse certificate response">
-          <Assign DisplayName="Extract CertPath">
-            <Assign.To><OutArgument x:TypeArguments="x:String">[v_CertPath]</OutArgument></Assign.To>
+        <Sequence DisplayName="S9 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_4">
+          <Assign DisplayName="S9 Extract CertPath" sap2010:WorkflowViewState.IdRef="Assign_16">
+            <Assign.To>
+              <OutArgument x:TypeArguments="x:String">[v_CertPath]</OutArgument>
+            </Assign.To>
             <Assign.Value>
-              <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("CertPath") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("CertPath").ToString(), "")]
-              </InArgument>
+              <InArgument x:TypeArguments="x:String">[Newtonsoft.Json.Linq.JObject.Parse(v_Resp)("CertPath").ToString()]</InArgument>
             </Assign.Value>
           </Assign>
-          <WriteLine DisplayName="[Log] S9 done"
-              Text="['[Stage9] ✓ Certificate: ' + v_CertPath]" />
+          <WriteLine DisplayName="[Log] S9 done" sap2010:WorkflowViewState.IdRef="WriteLine_8" Text="[&quot;[Stage9] Certificate: &quot; + v_CertPath]" />
         </Sequence>
       </If.Then>
       <If.Else>
-        <WriteLine DisplayName="[Log] S9 error"
-            Text="['[Stage9] ERROR HTTP ' + v_Status.ToString() + ' — ' + v_Resp]" />
+        <WriteLine DisplayName="[Log] S9 error" sap2010:WorkflowViewState.IdRef="WriteLine_9" Text="[&quot;[Stage9] ERROR: &quot; + v_Resp]" />
       </If.Else>
     </If>
-
-    <WriteLine DisplayName="[Log] Case complete"
-        Text="['[VacciCare] ═══ COMPLETE  Case: ' + in_CaseID + '  Vaccine: ' + v_NextVaccine + '  Risk: ' + v_RiskLabel + '  Cert: ' + v_CertPath + ' ═══']" />
-
-    <!-- ── Copy local variables to output arguments ─────────────────── -->
-    <Assign DisplayName="Set out_NextVaccine">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[out_NextVaccine]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[v_NextVaccine]</InArgument></Assign.Value>
+    <WriteLine DisplayName="[Log] Case complete" sap2010:WorkflowViewState.IdRef="WriteLine_10" Text="[&quot;[VacciCare] COMPLETE Case: &quot; + in_CaseID + &quot; Vaccine: &quot; + v_NextVaccine + &quot; Risk: &quot; + v_RiskLabel + &quot; Cert: &quot; + v_CertPath]" />
+    <Assign DisplayName="Set out_NextVaccine" sap2010:WorkflowViewState.IdRef="Assign_17">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[out_NextVaccine]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[v_NextVaccine]</InArgument>
+      </Assign.Value>
     </Assign>
-    <Assign DisplayName="Set out_NextDueDate">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[out_NextDueDate]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[v_NextDueDate]</InArgument></Assign.Value>
+    <Assign DisplayName="Set out_NextDueDate" sap2010:WorkflowViewState.IdRef="Assign_18">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[out_NextDueDate]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[v_NextDueDate]</InArgument>
+      </Assign.Value>
     </Assign>
-    <Assign DisplayName="Set out_MessageBody">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[out_MessageBody]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[v_MessageBody]</InArgument></Assign.Value>
+    <Assign DisplayName="Set out_MessageBody" sap2010:WorkflowViewState.IdRef="Assign_19">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[out_MessageBody]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[v_MessageBody]</InArgument>
+      </Assign.Value>
     </Assign>
-    <Assign DisplayName="Set out_DLTTemplate">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[out_DLTTemplate]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[v_DLTTemplate]</InArgument></Assign.Value>
+    <Assign DisplayName="Set out_DLTTemplate" sap2010:WorkflowViewState.IdRef="Assign_20">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[out_DLTTemplate]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[v_DLTTemplate]</InArgument>
+      </Assign.Value>
     </Assign>
-    <Assign DisplayName="Set out_RiskScore">
-      <Assign.To><OutArgument x:TypeArguments="x:Double">[out_RiskScore]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:Double">[v_RiskScore]</InArgument></Assign.Value>
+    <Assign DisplayName="Set out_RiskScore" sap2010:WorkflowViewState.IdRef="Assign_21">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:Double">[out_RiskScore]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:Double">[v_RiskScore]</InArgument>
+      </Assign.Value>
     </Assign>
-    <Assign DisplayName="Set out_RiskLabel">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[out_RiskLabel]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[v_RiskLabel]</InArgument></Assign.Value>
+    <Assign DisplayName="Set out_RiskLabel" sap2010:WorkflowViewState.IdRef="Assign_22">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[out_RiskLabel]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[v_RiskLabel]</InArgument>
+      </Assign.Value>
     </Assign>
-    <Assign DisplayName="Set out_EscalateNow">
-      <Assign.To><OutArgument x:TypeArguments="x:Boolean">[out_EscalateNow]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</InArgument></Assign.Value>
+    <Assign DisplayName="Set out_EscalateNow" sap2010:WorkflowViewState.IdRef="Assign_23">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:Boolean">[out_EscalateNow]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</InArgument>
+      </Assign.Value>
     </Assign>
-    <Assign DisplayName="Set out_CertPath">
-      <Assign.To><OutArgument x:TypeArguments="x:String">[out_CertPath]</OutArgument></Assign.To>
-      <Assign.Value><InArgument x:TypeArguments="x:String">[v_CertPath]</InArgument></Assign.Value>
+    <Assign DisplayName="Set out_CertPath" sap2010:WorkflowViewState.IdRef="Assign_24">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[out_CertPath]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">[v_CertPath]</InArgument>
+      </Assign.Value>
     </Assign>
-
   </Sequence>
 </Activity>

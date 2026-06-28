@@ -1,17 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ╔══════════════════════════════════════════════════════════════════════╗
-  ║  Stage 9 — Case Closure & Certificate Generation                     ║
-  ║  POST /generate  →  ReportLab PDF certificate generator.             ║
-  ║  Returns bilingual (English + Tamil) vaccination certificate          ║
-  ║  with ABHA QR code; served via GET /download/{child_id}.             ║
-  ║                                                                      ║
-  ║  This stage marks the Maestro case as COMPLETE.                      ║
-  ║                                                                      ║
-  ║  HTTP: webapi:HttpRequest (UiPath.WebAPI.Activities 2.3.1)           ║
-  ║  FIX: HttpRequest  ← correct class name (not HTTPRequest)            ║
-  ║  FIX: OutArgument uses [varname]  ← not {x:Reference}               ║
-  ╚══════════════════════════════════════════════════════════════════════╝
+  Stage 9 — Case Closure & Certificate Generation
+  POST /generate → ReportLab bilingual PDF certificate with ABHA QR code.
+  Returns CertPath (download URL) and TotalDoses.
+
+  HTTP: Func(Of String) / System.Net.Http.HttpClient (.NET 8 BCL).
+  Log strings: XML attribute delimited with ' so VB string literals use " correctly.
+  OutArgument: [varname] VB expression (NOT {x:Reference}).
 -->
 <Activity mc:Ignorable="sap sap2010"
     x:Class="VacciCare_Maestro.Stage9_CaseClosure"
@@ -20,7 +15,6 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
-    xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <x:Members>
@@ -30,9 +24,7 @@
     <x:Property Name="in_ParentName"   Type="InArgument(x:String)"  />
     <x:Property Name="in_ClinicName"   Type="InArgument(x:String)"  />
     <x:Property Name="in_District"     Type="InArgument(x:String)"  />
-    <!-- ABHA = Ayushman Bharat Health Account; optional — defaults to "NOT-REGISTERED" -->
     <x:Property Name="in_AbhaID"       Type="InArgument(x:String)"  />
-    <!-- JSON array of administered vaccines: [{"name":"BCG","date":"2024-01-15"},...] -->
     <x:Property Name="in_VaccinesJSON" Type="InArgument(x:String)"  />
     <x:Property Name="out_CertPath"    Type="OutArgument(x:String)" />
     <x:Property Name="out_TotalDoses"  Type="OutArgument(x:Int32)"  />
@@ -40,23 +32,21 @@
 
   <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
 
-  <Sequence DisplayName="Stage 9 — Case Closure &amp; Certificate">
+  <Sequence DisplayName="Stage 9 — Case Closure and Certificate">
     <Sequence.Variables>
       <Variable x:TypeArguments="x:String" Name="v_ServiceUrl"   Default='"https://vaccicarehackathan-production.up.railway.app/generate"' />
-      <!-- Normalised vaccines array — empty array when caller passes nothing -->
       <Variable x:TypeArguments="x:String" Name="v_VaccinesJSON" Default='"[]"' />
       <Variable x:TypeArguments="x:String" Name="v_RequestBody"  Default='""' />
       <Variable x:TypeArguments="x:String" Name="v_ResponseBody" Default='""' />
-      <Variable x:TypeArguments="x:Int32"  Name="v_StatusCode"   Default="0" />
       <Variable x:TypeArguments="x:String" Name="v_CertPath"     Default='""' />
       <Variable x:TypeArguments="x:Int32"  Name="v_TotalDoses"   Default="0" />
     </Sequence.Variables>
 
     <WriteLine DisplayName="[Log] Stage 9 starting"
-        Text="['[Stage9] Generating certificate — Case: ' + in_CaseID]" />
+        Text='["[Stage9] Generating certificate for case: " + in_CaseID]' />
 
-    <!-- STEP 1 — Normalise vaccines JSON (empty array if blank/null) -->
-    <Assign DisplayName="S9 ▶ Normalise vaccines array">
+    <!-- STEP 1: Normalise vaccines array — default [] if caller passes nothing -->
+    <Assign DisplayName="S9 Normalise vaccines">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_VaccinesJSON]</OutArgument>
       </Assign.To>
@@ -67,9 +57,9 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 2 — Build certificate request JSON.
-         vaccines value is raw JSON array — no quotes around {7}.       -->
-    <Assign DisplayName="S9 ▶ Build /generate request body">
+    <!-- STEP 2: Build certificate request JSON
+         {7} is v_VaccinesJSON — a raw JSON array, no quotes around it -->
+    <Assign DisplayName="S9 Build request body">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_RequestBody]</OutArgument>
       </Assign.To>
@@ -84,25 +74,38 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 3 — HTTP POST via UiPath built-in HTTP Request activity -->
-    <webapi:HttpRequest DisplayName="S9 ▶ POST /generate"
-        Endpoint="[v_ServiceUrl]"
-        Method="Post"
-        Body="[v_RequestBody]"
-        BodyFormat="application/json"
-        AcceptedMediaType="application/json"
-        Response="[v_ResponseBody]"
-        StatusCode="[v_StatusCode]" />
+    <!-- STEP 3: HTTP POST -->
+    <Assign DisplayName="S9 POST /generate">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[v_ResponseBody]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+[(New Func(Of String)(Function()
+    Dim hc As New System.Net.Http.HttpClient()
+    Dim ct As New System.Net.Http.StringContent(v_RequestBody, System.Text.Encoding.UTF8, "application/json")
+    Try
+        Return hc.PostAsync(v_ServiceUrl, ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    Catch ex As Exception
+        Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}"
+    Finally
+        hc.Dispose()
+    End Try
+End Function)).Invoke()]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
 
-    <!-- STEP 4 — Parse response if HTTP 2xx -->
-    <If DisplayName="S9 ▶ Check HTTP 2xx">
+    <!-- STEP 4: Parse response -->
+    <If DisplayName="S9 Parse response">
       <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode >= 200 AndAlso v_StatusCode &lt;= 299]</InArgument>
+        <InArgument x:TypeArguments="x:Boolean">
+          [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CertPath") IsNot Nothing]
+        </InArgument>
       </If.Condition>
       <If.Then>
-        <Sequence DisplayName="S9 — Parse certificate response">
-
-          <Assign DisplayName="Extract CertPath">
+        <Sequence DisplayName="S9 Extract fields">
+          <Assign DisplayName="S9 Extract CertPath">
             <Assign.To><OutArgument x:TypeArguments="x:String">[v_CertPath]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:String">
@@ -110,29 +113,25 @@
               </InArgument>
             </Assign.Value>
           </Assign>
-
-          <Assign DisplayName="Extract TotalDoses">
+          <Assign DisplayName="S9 Extract TotalDoses">
             <Assign.To><OutArgument x:TypeArguments="x:Int32">[v_TotalDoses]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:Int32">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TotalDoses") IsNot Nothing,
-                   Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TotalDoses").ToString()), 0)]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TotalDoses") IsNot Nothing, Integer.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TotalDoses").ToString()), 0)]
               </InArgument>
             </Assign.Value>
           </Assign>
-
           <WriteLine DisplayName="[Log] S9 success"
-              Text="['[Stage9] ✓ Certificate: ' + v_CertPath + '  Doses: ' + v_TotalDoses.ToString()]" />
-
+              Text='["[Stage9] Certificate: " + v_CertPath + " Doses: " + v_TotalDoses.ToString()]' />
         </Sequence>
       </If.Then>
       <If.Else>
         <WriteLine DisplayName="[Log] S9 error"
-            Text="['[Stage9] ERROR HTTP ' + v_StatusCode.ToString() + ' — ' + v_ResponseBody]" />
+            Text='["[Stage9] ERROR: " + v_ResponseBody]' />
       </If.Else>
     </If>
 
-    <!-- STEP 5 — Copy locals to output arguments -->
+    <!-- STEP 5: Copy locals to output arguments -->
     <Assign DisplayName="Set out_CertPath">
       <Assign.To><OutArgument x:TypeArguments="x:String">[out_CertPath]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:String">[v_CertPath]</InArgument></Assign.Value>
@@ -143,7 +142,7 @@
     </Assign>
 
     <WriteLine DisplayName="[Log] Case closed"
-        Text="['[Stage9] CASE CLOSED — ' + in_CaseID + '  Certificate: ' + v_CertPath]" />
+        Text='["[Stage9] CASE CLOSED: " + in_CaseID + " Certificate: " + v_CertPath]' />
 
   </Sequence>
 </Activity>

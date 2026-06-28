@@ -1,19 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ╔══════════════════════════════════════════════════════════════════════╗
-  ║  Stage 7 — No-show Risk Scoring                                      ║
-  ║  POST /score  →  logistic regression dropout risk model.             ║
-  ║  Returns RiskScore (0–1), RiskLabel (LOW/MEDIUM/HIGH),               ║
-  ║  EscalateImmediately flag, and TopRiskFactor string.                 ║
-  ║                                                                      ║
-  ║  EscalateImmediately=True → Maestro routes to urgent HW queue        ║
-  ║  (SLA cut from 24 h to 2 h).                                         ║
-  ║                                                                      ║
-  ║  HTTP: webapi:HttpRequest (UiPath.WebAPI.Activities 2.3.1)           ║
-  ║  FIX: HttpRequest  ← correct class name (not HTTPRequest)            ║
-  ║  FIX: OutArgument uses [varname]  ← not {x:Reference}               ║
-  ║  NOTE: JSON booleans must be lowercase (true/false, not True/False)  ║
-  ╚══════════════════════════════════════════════════════════════════════╝
+  Stage 7 — No-show Risk Scoring
+  POST /score → logistic regression dropout risk model.
+  Returns RiskScore (0-1), RiskLabel, EscalateImmediately, TopFactor.
+
+  HTTP: Func(Of String) / System.Net.Http.HttpClient (.NET 8 BCL).
+  Log strings: XML attribute delimited with ' so VB string literals use " correctly.
+  OutArgument: [varname] VB expression (NOT {x:Reference}).
+  JSON booleans must be lowercase: use If(flag,"true","false") not flag.ToString().
 -->
 <Activity mc:Ignorable="sap sap2010"
     x:Class="VacciCare_Maestro.Stage7_RiskScore"
@@ -22,7 +16,6 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
-    xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <x:Members>
@@ -47,7 +40,6 @@
       <Variable x:TypeArguments="x:String"  Name="v_ServiceUrl"   Default='"https://vaccicarehackathan-production.up.railway.app/score"' />
       <Variable x:TypeArguments="x:String"  Name="v_RequestBody"  Default='""' />
       <Variable x:TypeArguments="x:String"  Name="v_ResponseBody" Default='""' />
-      <Variable x:TypeArguments="x:Int32"   Name="v_StatusCode"   Default="0" />
       <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"    Default="0.0" />
       <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"    Default='"LOW"' />
       <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow"  Default="False" />
@@ -55,11 +47,10 @@
     </Sequence.Variables>
 
     <WriteLine DisplayName="[Log] Stage 7 starting"
-        Text="['[Stage7] Scoring dropout risk — Case: ' + in_CaseID]" />
+        Text='["[Stage7] Scoring dropout risk for case: " + in_CaseID]' />
 
-    <!-- STEP 1 — Build risk factor JSON.
-         VB True/False must be converted to JSON lowercase true/false. -->
-    <Assign DisplayName="S7 ▶ Build /score request body">
+    <!-- STEP 1: Build JSON — booleans serialised as JSON lowercase true/false -->
+    <Assign DisplayName="S7 Build request body">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_RequestBody]</OutArgument>
       </Assign.To>
@@ -78,25 +69,38 @@
       </Assign.Value>
     </Assign>
 
-    <!-- STEP 2 — HTTP POST via UiPath built-in HTTP Request activity -->
-    <webapi:HttpRequest DisplayName="S7 ▶ POST /score"
-        Endpoint="[v_ServiceUrl]"
-        Method="Post"
-        Body="[v_RequestBody]"
-        BodyFormat="application/json"
-        AcceptedMediaType="application/json"
-        Response="[v_ResponseBody]"
-        StatusCode="[v_StatusCode]" />
+    <!-- STEP 2: HTTP POST -->
+    <Assign DisplayName="S7 POST /score">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[v_ResponseBody]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+[(New Func(Of String)(Function()
+    Dim hc As New System.Net.Http.HttpClient()
+    Dim ct As New System.Net.Http.StringContent(v_RequestBody, System.Text.Encoding.UTF8, "application/json")
+    Try
+        Return hc.PostAsync(v_ServiceUrl, ct).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    Catch ex As Exception
+        Return "{""error"":true,""msg"":""" + ex.Message.Replace("""","'") + """}"
+    Finally
+        hc.Dispose()
+    End Try
+End Function)).Invoke()]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
 
-    <!-- STEP 3 — Parse response if HTTP 2xx -->
-    <If DisplayName="S7 ▶ Check HTTP 2xx">
+    <!-- STEP 3: Parse response -->
+    <If DisplayName="S7 Parse response">
       <If.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_StatusCode >= 200 AndAlso v_StatusCode &lt;= 299]</InArgument>
+        <InArgument x:TypeArguments="x:Boolean">
+          [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskScore") IsNot Nothing]
+        </InArgument>
       </If.Condition>
       <If.Then>
-        <Sequence DisplayName="S7 — Parse risk response">
-
-          <Assign DisplayName="Extract RiskScore">
+        <Sequence DisplayName="S7 Extract fields">
+          <Assign DisplayName="S7 Extract RiskScore">
             <Assign.To><OutArgument x:TypeArguments="x:Double">[v_RiskScore]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:Double">
@@ -104,61 +108,52 @@
               </InArgument>
             </Assign.Value>
           </Assign>
-
-          <Assign DisplayName="Extract RiskLabel">
+          <Assign DisplayName="S7 Extract RiskLabel">
             <Assign.To><OutArgument x:TypeArguments="x:String">[v_RiskLabel]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskLabel") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskLabel").ToString(), "LOW")]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskLabel") IsNot Nothing, Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskLabel").ToString(), "LOW")]
               </InArgument>
             </Assign.Value>
           </Assign>
-
-          <Assign DisplayName="Extract EscalateImmediately">
+          <Assign DisplayName="S7 Extract EscalateNow">
             <Assign.To><OutArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:Boolean">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("EscalateImmediately") IsNot Nothing,
-                   Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("EscalateImmediately").ToString()), False)]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("EscalateImmediately") IsNot Nothing, Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("EscalateImmediately").ToString()), False)]
               </InArgument>
             </Assign.Value>
           </Assign>
-
-          <Assign DisplayName="Extract TopFactor">
+          <Assign DisplayName="S7 Extract TopFactor">
             <Assign.To><OutArgument x:TypeArguments="x:String">[v_TopFactor]</OutArgument></Assign.To>
             <Assign.Value>
               <InArgument x:TypeArguments="x:String">
-                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TopFactor") IsNot Nothing,
-                   Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TopFactor").ToString(), "")]
+                [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TopFactor") IsNot Nothing, Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("TopFactor").ToString(), "")]
               </InArgument>
             </Assign.Value>
           </Assign>
-
-          <!-- Inner If: log escalation decision for Orchestrator audit trail -->
-          <If DisplayName="S7 ▶ Escalation check">
+          <If DisplayName="S7 Escalation check">
             <If.Condition>
               <InArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</InArgument>
             </If.Condition>
             <If.Then>
-              <WriteLine DisplayName="[Log] ESCALATE NOW"
-                  Text="['[Stage7] ⚠ ESCALATE IMMEDIATELY — Case: ' + in_CaseID + '  Risk: ' + v_RiskLabel + ' (' + v_RiskScore.ToString(&quot;F2&quot;) + ')  Factor: ' + v_TopFactor]" />
+              <WriteLine DisplayName="[Log] Escalate"
+                  Text='["[Stage7] ESCALATE IMMEDIATELY Case: " + in_CaseID + " Risk: " + v_RiskLabel + " Factor: " + v_TopFactor]' />
             </If.Then>
             <If.Else>
               <WriteLine DisplayName="[Log] S7 success"
-                  Text="['[Stage7] ✓ Risk: ' + v_RiskLabel + ' (' + v_RiskScore.ToString(&quot;F2&quot;) + ')  Factor: ' + v_TopFactor + '  → standard queue']" />
+                  Text='["[Stage7] Risk: " + v_RiskLabel + " Score: " + v_RiskScore.ToString("F2") + " Factor: " + v_TopFactor]' />
             </If.Else>
           </If>
-
         </Sequence>
       </If.Then>
       <If.Else>
         <WriteLine DisplayName="[Log] S7 error"
-            Text="['[Stage7] ERROR HTTP ' + v_StatusCode.ToString() + ' — ' + v_ResponseBody]" />
+            Text='["[Stage7] ERROR: " + v_ResponseBody]' />
       </If.Else>
     </If>
 
-    <!-- STEP 4 — Copy locals to output arguments -->
+    <!-- STEP 4: Copy locals to output arguments -->
     <Assign DisplayName="Set out_RiskScore">
       <Assign.To><OutArgument x:TypeArguments="x:Double">[out_RiskScore]</OutArgument></Assign.To>
       <Assign.Value><InArgument x:TypeArguments="x:Double">[v_RiskScore]</InArgument></Assign.Value>
