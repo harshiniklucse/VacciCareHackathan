@@ -4,8 +4,7 @@
   "description": "AI-powered child vaccination follow-up — UiPath Maestro + Claude Code Python layer",
   "main": "Main.xaml",
   "dependencies": {
-    "UiPath.System.Activities": "[24.10.0]",
-    "UiPath.WebAPI.Activities": "[1.18.0]"
+    "UiPath.System.Activities": "[24.10.0]"
   },
   "webServices": [],
   "entitiesStores": [],
