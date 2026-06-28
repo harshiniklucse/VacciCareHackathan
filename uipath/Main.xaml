@@ -6,191 +6,316 @@
     xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities"
     xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
     xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+    xmlns:webapi="clr-namespace:UiPath.WebAPI.Activities;assembly=UiPath.WebAPI.Activities"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+  <!-- ═══════════════════════════════════════════════════════════════════
+       VacciCare Maestro — Main Entry Point
+       Runs all 4 case stages in sequence:
+         Stage 2  →  POST /schedule    (IAP vaccine schedule)
+         Stage 3  →  POST /compose     (DLT WhatsApp reminder)
+         Stage 7  →  POST /score       (dropout risk)
+         Stage 9  →  POST /generate    (bilingual PDF certificate)
+       All HTTP calls go to the combined Railway service.
+       ═══════════════════════════════════════════════════════════════════ -->
+
   <x:Members>
-    <x:Property Name="in_CaseID"          Type="InArgument(x:String)" />
-    <x:Property Name="in_ChildName"       Type="InArgument(x:String)" />
-    <x:Property Name="in_ChildDOB"        Type="InArgument(x:String)" />
-    <x:Property Name="in_ParentName"      Type="InArgument(x:String)" />
-    <x:Property Name="in_ParentMobile"    Type="InArgument(x:String)" />
-    <x:Property Name="in_Language"        Type="InArgument(x:String)" />
-    <x:Property Name="in_ClinicName"      Type="InArgument(x:String)" />
-    <x:Property Name="in_ClinicAddress"   Type="InArgument(x:String)" />
-    <x:Property Name="in_District"        Type="InArgument(x:String)" />
-    <x:Property Name="in_StageAction"     Type="InArgument(x:String)" />
+    <!-- ── Inputs from Maestro case ─────────────────────────────────── -->
+    <x:Property Name="in_CaseID"         Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildName"      Type="InArgument(x:String)" />
+    <x:Property Name="in_ChildDOB"       Type="InArgument(x:String)" />
+    <x:Property Name="in_ParentName"     Type="InArgument(x:String)" />
+    <x:Property Name="in_Language"       Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicName"     Type="InArgument(x:String)" />
+    <x:Property Name="in_ClinicAddress"  Type="InArgument(x:String)" />
+    <x:Property Name="in_District"       Type="InArgument(x:String)" />
+    <!-- ── Outputs back to Maestro ───────────────────────────────────── -->
+    <x:Property Name="out_NextVaccine"   Type="OutArgument(x:String)" />
+    <x:Property Name="out_NextDueDate"   Type="OutArgument(x:String)" />
+    <x:Property Name="out_MessageBody"   Type="OutArgument(x:String)" />
+    <x:Property Name="out_DLTTemplate"   Type="OutArgument(x:String)" />
+    <x:Property Name="out_RiskScore"     Type="OutArgument(x:Double)" />
+    <x:Property Name="out_RiskLabel"     Type="OutArgument(x:String)" />
+    <x:Property Name="out_EscalateNow"   Type="OutArgument(x:Boolean)" />
+    <x:Property Name="out_CertPath"      Type="OutArgument(x:String)" />
   </x:Members>
 
   <mva:VisualBasic.Settings>Assembly references and imported namespaces serialized as XML namespaces</mva:VisualBasic.Settings>
 
-  <Flowchart DisplayName="VacciCare Maestro — Main Dispatcher" sap2010:WorkflowViewState.IdRef="Flowchart_1">
-    <Flowchart.Variables>
-      <Variable x:TypeArguments="x:String"  Name="v_Action"         Default="" />
-      <Variable x:TypeArguments="x:String"  Name="v_NextVaccine"    Default="" />
-      <Variable x:TypeArguments="x:String"  Name="v_NextDueDate"    Default="" />
-      <Variable x:TypeArguments="x:String"  Name="v_MessageBody"    Default="" />
-      <Variable x:TypeArguments="x:String"  Name="v_DLTTemplateID"  Default="" />
-      <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"      Default="0.0" />
-      <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"      Default="" />
-      <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow"    Default="False" />
-      <Variable x:TypeArguments="x:String"  Name="v_CertPath"       Default="" />
-    </Flowchart.Variables>
+  <Sequence DisplayName="VacciCare Maestro — Full Case Run">
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String"  Name="v_Base"         Default='"https://vaccicarehackathan-production.up.railway.app"' />
+      <Variable x:TypeArguments="x:String"  Name="v_RequestBody"  Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_ResponseBody" Default='""' />
+      <Variable x:TypeArguments="x:Int32"   Name="v_Status"       Default="0" />
+      <!-- Stage 2 working vars -->
+      <Variable x:TypeArguments="x:String"  Name="v_NextVaccine"  Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_NextDueDate"  Default='""' />
+      <!-- Stage 3 working vars -->
+      <Variable x:TypeArguments="x:String"  Name="v_MessageBody"  Default='""' />
+      <Variable x:TypeArguments="x:String"  Name="v_DLTTemplate"  Default='""' />
+      <!-- Stage 7 working vars -->
+      <Variable x:TypeArguments="x:Double"  Name="v_RiskScore"    Default="0.0" />
+      <Variable x:TypeArguments="x:String"  Name="v_RiskLabel"    Default='"LOW"' />
+      <Variable x:TypeArguments="x:Boolean" Name="v_EscalateNow"  Default="False" />
+      <!-- Stage 9 working vars -->
+      <Variable x:TypeArguments="x:String"  Name="v_CertPath"     Default='""' />
+    </Sequence.Variables>
 
-    <Flowchart.StartNode>
-      <x:Reference>nd_ReadAction</x:Reference>
-    </Flowchart.StartNode>
+    <WriteLine DisplayName="[Log] VacciCare starting"
+        Text="['[VacciCare] ════ Case: ' + in_CaseID + ' | Child: ' + in_ChildName + ' | DOB: ' + in_ChildDOB + ' ════']" />
 
-    <!-- Node 1: Read action argument -->
-    <FlowStep x:Name="nd_ReadAction">
-      <FlowStep.Action>
-        <Assign DisplayName="Read Stage Action">
-          <Assign.To>
-            <OutArgument x:TypeArguments="x:String">
-              <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_Action}" />
-            </OutArgument>
-          </Assign.To>
-          <Assign.Value>
-            <InArgument x:TypeArguments="x:String">[in_StageAction.Trim().ToUpper()]</InArgument>
-          </Assign.Value>
+
+    <!-- ══════════════════════════════════════════════════════════
+         STAGE 2 — Schedule Planning  (POST /schedule)
+         ══════════════════════════════════════════════════════════ -->
+    <Assign DisplayName="S2: Build request body">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [String.Format("{{""child_id"":""{0}"",""dob"":""{1}"",""birth_weight_grams"":2500,""gestation_weeks"":40}}", in_CaseID, in_ChildDOB)]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <webapi:HTTPRequest DisplayName="S2: POST /schedule"
+        EndPoint="[v_Base + &quot;/schedule&quot;]"
+        Method="Post"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptedMediaType="application/json"
+        ResponseContent="[v_ResponseBody]"
+        StatusCode="[v_Status]" />
+
+    <If DisplayName="S2: Parse response">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="S2: Extract fields">
+          <Assign DisplayName="S2: NextVaccine">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_NextVaccine}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">
+              [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueVaccine") IsNot Nothing,
+                 Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueVaccine").ToString(),
+                 "All doses complete")]
+            </InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="S2: NextDueDate">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_NextDueDate}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">
+              [If(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueDate") IsNot Nothing,
+                 Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("NextDueDate").ToString(),
+                 "")]
+            </InArgument></Assign.Value>
+          </Assign>
+          <WriteLine Text="['[Stage2] ✓ Next vaccine: ' + v_NextVaccine + ' | Due: ' + v_NextDueDate]" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <WriteLine Text="['[Stage2] ✗ HTTP ' + v_Status.ToString() + ' — ' + v_ResponseBody]" />
+      </If.Else>
+    </If>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STAGE 3 — Reminder Dispatch  (POST /compose)
+         ══════════════════════════════════════════════════════════ -->
+    <Assign DisplayName="S3: Build request body">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""parent_name"":""{2}"",""vaccine_name"":""{3}"",""due_date"":""{4}"",""clinic_name"":""{5}"",""clinic_address"":""{6}"",""language"":""{7}"",""reminder_number"":1}}",
+            in_CaseID, in_ChildName, in_ParentName,
+            v_NextVaccine, v_NextDueDate,
+            in_ClinicName, in_ClinicAddress,
+            If(String.IsNullOrWhiteSpace(in_Language), "en", in_Language.ToLower().Trim()))]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <webapi:HTTPRequest DisplayName="S3: POST /compose"
+        EndPoint="[v_Base + &quot;/compose&quot;]"
+        Method="Post"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptedMediaType="application/json"
+        ResponseContent="[v_ResponseBody]"
+        StatusCode="[v_Status]" />
+
+    <If DisplayName="S3: Parse response">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="S3: Extract fields">
+          <Assign DisplayName="S3: MessageBody">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_MessageBody}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">
+              [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("MessageBody").ToString()]
+            </InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="S3: DLTTemplate">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_DLTTemplate}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">
+              [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("DLTTemplateID").ToString()]
+            </InArgument></Assign.Value>
+          </Assign>
+          <WriteLine Text="['[Stage3] ✓ DLT: ' + v_DLTTemplate + ' | Msg: ' + v_MessageBody.Substring(0, Math.Min(60, v_MessageBody.Length)) + '...']" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <WriteLine Text="['[Stage3] ✗ HTTP ' + v_Status.ToString() + ' — ' + v_ResponseBody]" />
+      </If.Else>
+    </If>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STAGE 7 — Risk Scoring  (POST /score)
+         ══════════════════════════════════════════════════════════ -->
+    <Assign DisplayName="S7: Build request body">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [String.Format("{{""child_id"":""{0}"",""no_show_count"":0,""reminders_sent"":1,""distance_km"":5.0,""prev_missed_doses"":0,""is_migrated"":false,""mother_age_under_20"":false,""rural_flag"":false}}",
+            in_CaseID)]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <webapi:HTTPRequest DisplayName="S7: POST /score"
+        EndPoint="[v_Base + &quot;/score&quot;]"
+        Method="Post"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptedMediaType="application/json"
+        ResponseContent="[v_ResponseBody]"
+        StatusCode="[v_Status]" />
+
+    <If DisplayName="S7: Parse response">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Sequence DisplayName="S7: Extract fields">
+          <Assign DisplayName="S7: RiskScore">
+            <Assign.To><OutArgument x:TypeArguments="x:Double"><VariableReference x:TypeArguments="x:Double" Variable="{x:Reference v_RiskScore}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Double">
+              [Double.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskScore").ToString())]
+            </InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="S7: RiskLabel">
+            <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RiskLabel}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:String">
+              [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("RiskLabel").ToString()]
+            </InArgument></Assign.Value>
+          </Assign>
+          <Assign DisplayName="S7: EscalateNow">
+            <Assign.To><OutArgument x:TypeArguments="x:Boolean"><VariableReference x:TypeArguments="x:Boolean" Variable="{x:Reference v_EscalateNow}" /></OutArgument></Assign.To>
+            <Assign.Value><InArgument x:TypeArguments="x:Boolean">
+              [Boolean.Parse(Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("EscalateImmediately").ToString())]
+            </InArgument></Assign.Value>
+          </Assign>
+          <WriteLine Text="['[Stage7] ✓ Risk: ' + v_RiskLabel + ' (' + v_RiskScore.ToString(&quot;F2&quot;) + ') | Escalate: ' + v_EscalateNow.ToString()]" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <WriteLine Text="['[Stage7] ✗ HTTP ' + v_Status.ToString() + ' — ' + v_ResponseBody]" />
+      </If.Else>
+    </If>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STAGE 9 — Case Closure / Certificate  (POST /generate)
+         ══════════════════════════════════════════════════════════ -->
+    <Assign DisplayName="S9: Build request body">
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">
+          <VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_RequestBody}" />
+        </OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">
+          [String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""dob"":""{2}"",""parent_name"":""{3}"",""clinic_name"":""{4}"",""district"":""{5}"",""abha_id"":""NOT-REGISTERED"",""vaccines"":[]}}",
+            in_CaseID, in_ChildName, in_ChildDOB, in_ParentName, in_ClinicName, in_District)]
+        </InArgument>
+      </Assign.Value>
+    </Assign>
+
+    <webapi:HTTPRequest DisplayName="S9: POST /generate"
+        EndPoint="[v_Base + &quot;/generate&quot;]"
+        Method="Post"
+        Body="[v_RequestBody]"
+        BodyFormat="application/json"
+        AcceptedMediaType="application/json"
+        ResponseContent="[v_ResponseBody]"
+        StatusCode="[v_Status]" />
+
+    <If DisplayName="S9: Parse response">
+      <If.Condition>
+        <InArgument x:TypeArguments="x:Boolean">[v_Status >= 200 AndAlso v_Status &lt;= 299]</InArgument>
+      </If.Condition>
+      <If.Then>
+        <Assign DisplayName="S9: CertPath">
+          <Assign.To><OutArgument x:TypeArguments="x:String"><VariableReference x:TypeArguments="x:String" Variable="{x:Reference v_CertPath}" /></OutArgument></Assign.To>
+          <Assign.Value><InArgument x:TypeArguments="x:String">
+            [Newtonsoft.Json.Linq.JObject.Parse(v_ResponseBody)("CertPath").ToString()]
+          </InArgument></Assign.Value>
         </Assign>
-      </FlowStep.Action>
-      <FlowStep.Next>
-        <x:Reference>nd_RouteStage</x:Reference>
-      </FlowStep.Next>
-    </FlowStep>
+      </If.Then>
+      <If.Else>
+        <WriteLine Text="['[Stage9] ✗ HTTP ' + v_Status.ToString() + ' — ' + v_ResponseBody]" />
+      </If.Else>
+    </If>
 
-    <!-- Node 2: Route to correct stage -->
-    <FlowDecision x:Name="nd_RouteStage" DisplayName="Route by Stage Action">
-      <FlowDecision.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_Action = "STAGE2"]</InArgument>
-      </FlowDecision.Condition>
-      <FlowDecision.True>
-        <x:Reference>nd_Stage2</x:Reference>
-      </FlowDecision.True>
-      <FlowDecision.False>
-        <x:Reference>nd_RouteStage3</x:Reference>
-      </FlowDecision.False>
-    </FlowDecision>
+    <WriteLine DisplayName="[Log] Case complete"
+        Text="['[VacciCare] ════ COMPLETE — ' + in_CaseID + ' | Vaccine: ' + v_NextVaccine + ' | Risk: ' + v_RiskLabel + ' | Cert: ' + v_CertPath + ' ════']" />
 
-    <FlowDecision x:Name="nd_RouteStage3" DisplayName="Is Stage 3?">
-      <FlowDecision.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_Action = "STAGE3"]</InArgument>
-      </FlowDecision.Condition>
-      <FlowDecision.True>
-        <x:Reference>nd_Stage3</x:Reference>
-      </FlowDecision.True>
-      <FlowDecision.False>
-        <x:Reference>nd_RouteStage7</x:Reference>
-      </FlowDecision.False>
-    </FlowDecision>
+    <!-- ── Copy working vars to output arguments ─────────────────── -->
+    <Assign DisplayName="Set out_NextVaccine">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_NextVaccine" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_NextVaccine]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_NextDueDate">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_NextDueDate" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_NextDueDate]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_MessageBody">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_MessageBody" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_MessageBody]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_DLTTemplate">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_DLTTemplate" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_DLTTemplate]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_RiskScore">
+      <Assign.To><OutArgument x:TypeArguments="x:Double"><ArgumentReference x:TypeArguments="x:Double" ArgumentName="out_RiskScore" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Double">[v_RiskScore]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_RiskLabel">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_RiskLabel" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_RiskLabel]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_EscalateNow">
+      <Assign.To><OutArgument x:TypeArguments="x:Boolean"><ArgumentReference x:TypeArguments="x:Boolean" ArgumentName="out_EscalateNow" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:Boolean">[v_EscalateNow]</InArgument></Assign.Value>
+    </Assign>
+    <Assign DisplayName="Set out_CertPath">
+      <Assign.To><OutArgument x:TypeArguments="x:String"><ArgumentReference x:TypeArguments="x:String" ArgumentName="out_CertPath" /></OutArgument></Assign.To>
+      <Assign.Value><InArgument x:TypeArguments="x:String">[v_CertPath]</InArgument></Assign.Value>
+    </Assign>
 
-    <FlowDecision x:Name="nd_RouteStage7" DisplayName="Is Stage 7?">
-      <FlowDecision.Condition>
-        <InArgument x:TypeArguments="x:Boolean">[v_Action = "STAGE7"]</InArgument>
-      </FlowDecision.Condition>
-      <FlowDecision.True>
-        <x:Reference>nd_Stage7</x:Reference>
-      </FlowDecision.True>
-      <FlowDecision.False>
-        <x:Reference>nd_Stage9</x:Reference>
-      </FlowDecision.False>
-    </FlowDecision>
-
-    <!-- Node: Stage 2 -->
-    <FlowStep x:Name="nd_Stage2">
-      <FlowStep.Action>
-        <InvokeWorkflowFile DisplayName="Stage 2 — Schedule Planning"
-            WorkflowFileName="Stage2_SchedulePlanning.xaml">
-          <InvokeWorkflowFile.InputArguments>
-            <x:Reference>in_CaseID</x:Reference>
-            <x:Reference>in_ChildDOB</x:Reference>
-          </InvokeWorkflowFile.InputArguments>
-          <InvokeWorkflowFile.OutputArguments>
-            <x:Reference>v_NextVaccine</x:Reference>
-            <x:Reference>v_NextDueDate</x:Reference>
-          </InvokeWorkflowFile.OutputArguments>
-        </InvokeWorkflowFile>
-      </FlowStep.Action>
-      <FlowStep.Next>
-        <x:Reference>nd_LogDone</x:Reference>
-      </FlowStep.Next>
-    </FlowStep>
-
-    <!-- Node: Stage 3 -->
-    <FlowStep x:Name="nd_Stage3">
-      <FlowStep.Action>
-        <InvokeWorkflowFile DisplayName="Stage 3 — Reminder Dispatch"
-            WorkflowFileName="Stage3_ReminderDispatch.xaml">
-          <InvokeWorkflowFile.InputArguments>
-            <x:Reference>in_CaseID</x:Reference>
-            <x:Reference>in_ChildName</x:Reference>
-            <x:Reference>in_ParentName</x:Reference>
-            <x:Reference>in_ParentMobile</x:Reference>
-            <x:Reference>in_ClinicName</x:Reference>
-            <x:Reference>in_ClinicAddress</x:Reference>
-            <x:Reference>in_Language</x:Reference>
-          </InvokeWorkflowFile.InputArguments>
-          <InvokeWorkflowFile.OutputArguments>
-            <x:Reference>v_MessageBody</x:Reference>
-            <x:Reference>v_DLTTemplateID</x:Reference>
-          </InvokeWorkflowFile.OutputArguments>
-        </InvokeWorkflowFile>
-      </FlowStep.Action>
-      <FlowStep.Next>
-        <x:Reference>nd_LogDone</x:Reference>
-      </FlowStep.Next>
-    </FlowStep>
-
-    <!-- Node: Stage 7 -->
-    <FlowStep x:Name="nd_Stage7">
-      <FlowStep.Action>
-        <InvokeWorkflowFile DisplayName="Stage 7 — Risk Scoring"
-            WorkflowFileName="Stage7_RiskScore.xaml">
-          <InvokeWorkflowFile.InputArguments>
-            <x:Reference>in_CaseID</x:Reference>
-          </InvokeWorkflowFile.InputArguments>
-          <InvokeWorkflowFile.OutputArguments>
-            <x:Reference>v_RiskScore</x:Reference>
-            <x:Reference>v_RiskLabel</x:Reference>
-            <x:Reference>v_EscalateNow</x:Reference>
-          </InvokeWorkflowFile.OutputArguments>
-        </InvokeWorkflowFile>
-      </FlowStep.Action>
-      <FlowStep.Next>
-        <x:Reference>nd_LogDone</x:Reference>
-      </FlowStep.Next>
-    </FlowStep>
-
-    <!-- Node: Stage 9 -->
-    <FlowStep x:Name="nd_Stage9">
-      <FlowStep.Action>
-        <InvokeWorkflowFile DisplayName="Stage 9 — Case Closure"
-            WorkflowFileName="Stage9_CaseClosure.xaml">
-          <InvokeWorkflowFile.InputArguments>
-            <x:Reference>in_CaseID</x:Reference>
-            <x:Reference>in_ChildName</x:Reference>
-            <x:Reference>in_ChildDOB</x:Reference>
-            <x:Reference>in_ParentName</x:Reference>
-            <x:Reference>in_ClinicName</x:Reference>
-            <x:Reference>in_District</x:Reference>
-          </InvokeWorkflowFile.InputArguments>
-          <InvokeWorkflowFile.OutputArguments>
-            <x:Reference>v_CertPath</x:Reference>
-          </InvokeWorkflowFile.OutputArguments>
-        </InvokeWorkflowFile>
-      </FlowStep.Action>
-      <FlowStep.Next>
-        <x:Reference>nd_LogDone</x:Reference>
-      </FlowStep.Next>
-    </FlowStep>
-
-    <!-- Node: Done -->
-    <FlowStep x:Name="nd_LogDone">
-      <FlowStep.Action>
-        <WriteLine DisplayName="Log Completion"
-            Text="['[VacciCare] ' + v_Action + ' completed for case ' + in_CaseID]" />
-      </FlowStep.Action>
-    </FlowStep>
-
-  </Flowchart>
+  </Sequence>
 </Activity>
