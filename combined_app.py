@@ -43,6 +43,10 @@ app.add_api_route("/health/cert",       cert_health,       methods=["GET"],  tag
 app.add_api_route("/generate",          generate_certificate, methods=["POST"], tags=["Certificate Generator"], summary="Generate bilingual PDF certificate")
 app.add_api_route("/download/{child_id}", download_cert,   methods=["GET"],  tags=["Certificate Generator"], summary="Download generated certificate")
 
+# ── Maestro Human Task Forms ─────────────────────────────────────────────────
+from forms_routes import router as forms_router
+app.include_router(forms_router)
+
 # ── Root health ───────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"], summary="Overall health check")
 def health():
@@ -65,4 +69,5 @@ def root():
         "status":  "running",
         "docs":    "/docs",
         "health":  "/health",
+        "forms":   "/forms",
     })
