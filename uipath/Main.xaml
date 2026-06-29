@@ -1,4 +1,4 @@
-<Activity mc:Ignorable="sap sap2010" x:Class="VacciCare_Maestro.Main" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation" xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation" xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib" xmlns:sco="clr-namespace:System.Collections.ObjectModel;assembly=System.Private.CoreLib" xmlns:ui="http://schemas.uipath.com/workflow/activities" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<Activity mc:Ignorable="sap sap2010" x:Class="VacciCare_Maestro_Main" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation" xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation" xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib" xmlns:sco="clr-namespace:System.Collections.ObjectModel;assembly=System.Private.CoreLib" xmlns:ui="http://schemas.uipath.com/workflow/activities" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <x:Members>
     <x:Property Name="in_CaseID" Type="InArgument(x:String)" />
     <x:Property Name="in_ChildName" Type="InArgument(x:String)" />
@@ -43,7 +43,7 @@
       <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
     </sco:Collection>
   </TextExpression.ReferencesForImplementation>
-  <Sequence DisplayName="VacciCare Maestro — Full Case Run" sap2010:WorkflowViewState.IdRef="Sequence_5">
+  <Sequence DisplayName="VacciCare Maestro — Full Case Run" sap:VirtualizedContainerService.HintSize="664,2618" sap2010:WorkflowViewState.IdRef="Sequence_5">
     <Sequence.Variables>
       <Variable x:TypeArguments="x:String" Default="&quot;https://vaccicarehackathan-production.up.railway.app&quot;" Name="v_Base" />
       <Variable x:TypeArguments="x:String" Default="&quot;&quot;" Name="v_Body" />
@@ -63,8 +63,8 @@
         <x:Boolean x:Key="IsExpanded">True</x:Boolean>
       </scg:Dictionary>
     </sap:WorkflowViewStateService.ViewState>
-    <WriteLine DisplayName="[Log] Case started" sap2010:WorkflowViewState.IdRef="WriteLine_1" Text="[&quot;[VacciCare] START Case: &quot; + in_CaseID + &quot; Child: &quot; + in_ChildName]" />
-    <Assign DisplayName="S2 Build request body" sap2010:WorkflowViewState.IdRef="Assign_1">
+    <WriteLine DisplayName="[Log] Case started" sap:VirtualizedContainerService.HintSize="452,124" sap2010:WorkflowViewState.IdRef="WriteLine_1" Text="[&quot;[VacciCare] START Case: &quot; + in_CaseID + &quot; Child: &quot; + in_ChildName]" />
+    <Assign DisplayName="S2 Build request body" sap:VirtualizedContainerService.HintSize="452,176.66666666666666" sap2010:WorkflowViewState.IdRef="Assign_1">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
@@ -72,18 +72,7 @@
         <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""dob"":""{1}"",""birth_weight_grams"":2500,""gestation_weeks"":40}}", in_CaseID, in_ChildDOB)]</InArgument>
       </Assign.Value>
     </Assign>
-    <ui:HttpClient DisplayName="S2 POST /schedule"
-        EndPoint="[v_Base + &quot;/schedule&quot;]"
-        Method="POST"
-        Body="[v_Body]"
-        BodyFormat="application/json"
-        AcceptFormat="ANY"
-        AuthenticationType="None"
-        EnableSSLVerification="True"
-        TimeoutMS="30000"
-        ContinueOnError="True"
-        Result="[v_Resp]"
-        StatusCode="[v_StatusCode]">
+    <ui:HttpClient ClientCertificate="{x:Null}" ClientCertificatePassword="{x:Null}" ConsumerKey="{x:Null}" ConsumerSecret="{x:Null}" FileAttachments="{x:Null}" OAuth1Token="{x:Null}" OAuth1TokenSecret="{x:Null}" OAuth2Token="{x:Null}" Password="{x:Null}" ResourcePath="{x:Null}" ResponseAttachment="{x:Null}" ResponseHeaders="{x:Null}" SecureClientCertificatePassword="{x:Null}" SecurePassword="{x:Null}" Username="{x:Null}" AcceptFormat="ANY" AuthenticationType="None" Body="[v_Body]" BodyFormat="application/json" ContinueOnError="True" DisplayName="S2 POST /schedule" EnableSSLVerification="True" EndPoint="[v_Base + &quot;/schedule&quot;]" sap:VirtualizedContainerService.HintSize="452,104" sap2010:WorkflowViewState.IdRef="HttpClient_1" Method="POST" Result="[v_Resp]" StatusCode="[v_StatusCode]" TimeoutMS="30000">
       <ui:HttpClient.Attachments>
         <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
       </ui:HttpClient.Attachments>
@@ -100,10 +89,15 @@
         <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
       </ui:HttpClient.UrlSegments>
     </ui:HttpClient>
-    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S2 Parse response" sap2010:WorkflowViewState.IdRef="If_1">
+    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S2 Parse response" sap:VirtualizedContainerService.HintSize="452,458.6666666666667" sap2010:WorkflowViewState.IdRef="If_1">
       <If.Then>
-        <Sequence DisplayName="S2 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_1">
-          <Assign DisplayName="S2 Extract NextVaccine" sap2010:WorkflowViewState.IdRef="Assign_3">
+        <Sequence DisplayName="S2 Extract fields" sap:VirtualizedContainerService.HintSize="450,276.6666666666667" sap2010:WorkflowViewState.IdRef="Sequence_1">
+          <sap:WorkflowViewStateService.ViewState>
+            <scg:Dictionary x:TypeArguments="x:String, x:Object">
+              <x:Boolean x:Key="IsExpanded">True</x:Boolean>
+            </scg:Dictionary>
+          </sap:WorkflowViewStateService.ViewState>
+          <Assign DisplayName="S2 Extract NextVaccine" sap:VirtualizedContainerService.HintSize="416,176.66666666666666" sap2010:WorkflowViewState.IdRef="Assign_3">
             <Assign.To>
               <OutArgument x:TypeArguments="x:String">[v_NextVaccine]</OutArgument>
             </Assign.To>
@@ -126,7 +120,7 @@
         <WriteLine DisplayName="[Log] S2 error" sap2010:WorkflowViewState.IdRef="WriteLine_3" Text="[&quot;[Stage2] ERROR: &quot; + v_Resp]" />
       </If.Else>
     </If>
-    <Assign DisplayName="S3 Build request body" sap2010:WorkflowViewState.IdRef="Assign_5">
+    <Assign DisplayName="S3 Build request body" sap:VirtualizedContainerService.HintSize="452,176.66666666666666" sap2010:WorkflowViewState.IdRef="Assign_5">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
@@ -134,18 +128,7 @@
         <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""parent_name"":""{2}"",""vaccine_name"":""{3}"",""due_date"":""{4}"",""clinic_name"":""{5}"",""clinic_address"":""{6}"",""language"":""{7}"",""reminder_number"":1}}", in_CaseID, in_ChildName, in_ParentName, v_NextVaccine, v_NextDueDate, in_ClinicName, in_ClinicAddress, If(String.IsNullOrWhiteSpace(in_Language), "en", in_Language.ToLower().Trim()))]</InArgument>
       </Assign.Value>
     </Assign>
-    <ui:HttpClient DisplayName="S3 POST /compose"
-        EndPoint="[v_Base + &quot;/compose&quot;]"
-        Method="POST"
-        Body="[v_Body]"
-        BodyFormat="application/json"
-        AcceptFormat="ANY"
-        AuthenticationType="None"
-        EnableSSLVerification="True"
-        TimeoutMS="30000"
-        ContinueOnError="True"
-        Result="[v_Resp]"
-        StatusCode="[v_StatusCode]">
+    <ui:HttpClient ClientCertificate="{x:Null}" ClientCertificatePassword="{x:Null}" ConsumerKey="{x:Null}" ConsumerSecret="{x:Null}" FileAttachments="{x:Null}" OAuth1Token="{x:Null}" OAuth1TokenSecret="{x:Null}" OAuth2Token="{x:Null}" Password="{x:Null}" ResourcePath="{x:Null}" ResponseAttachment="{x:Null}" ResponseHeaders="{x:Null}" SecureClientCertificatePassword="{x:Null}" SecurePassword="{x:Null}" Username="{x:Null}" AcceptFormat="ANY" AuthenticationType="None" Body="[v_Body]" BodyFormat="application/json" ContinueOnError="True" DisplayName="S3 POST /compose" EnableSSLVerification="True" EndPoint="[v_Base + &quot;/compose&quot;]" sap:VirtualizedContainerService.HintSize="452,104" sap2010:WorkflowViewState.IdRef="HttpClient_2" Method="POST" Result="[v_Resp]" StatusCode="[v_StatusCode]" TimeoutMS="30000">
       <ui:HttpClient.Attachments>
         <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
       </ui:HttpClient.Attachments>
@@ -162,7 +145,7 @@
         <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
       </ui:HttpClient.UrlSegments>
     </ui:HttpClient>
-    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S3 Parse response" sap2010:WorkflowViewState.IdRef="If_2">
+    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S3 Parse response" sap:VirtualizedContainerService.HintSize="452,202" sap2010:WorkflowViewState.IdRef="If_2">
       <If.Then>
         <Sequence DisplayName="S3 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_2">
           <Assign DisplayName="S3 Extract MessageBody" sap2010:WorkflowViewState.IdRef="Assign_7">
@@ -188,7 +171,7 @@
         <WriteLine DisplayName="[Log] S3 error" sap2010:WorkflowViewState.IdRef="WriteLine_5" Text="[&quot;[Stage3] ERROR: &quot; + v_Resp]" />
       </If.Else>
     </If>
-    <Assign DisplayName="S7 Build request body" sap2010:WorkflowViewState.IdRef="Assign_9">
+    <Assign DisplayName="S7 Build request body" sap:VirtualizedContainerService.HintSize="452,176.66666666666666" sap2010:WorkflowViewState.IdRef="Assign_9">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
@@ -196,18 +179,7 @@
         <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""no_show_count"":0,""reminders_sent"":1,""distance_km"":5.0,""prev_missed_doses"":0,""is_migrated"":false,""mother_age_under_20"":false,""rural_flag"":false}}", in_CaseID)]</InArgument>
       </Assign.Value>
     </Assign>
-    <ui:HttpClient DisplayName="S7 POST /score"
-        EndPoint="[v_Base + &quot;/score&quot;]"
-        Method="POST"
-        Body="[v_Body]"
-        BodyFormat="application/json"
-        AcceptFormat="ANY"
-        AuthenticationType="None"
-        EnableSSLVerification="True"
-        TimeoutMS="30000"
-        ContinueOnError="True"
-        Result="[v_Resp]"
-        StatusCode="[v_StatusCode]">
+    <ui:HttpClient ClientCertificate="{x:Null}" ClientCertificatePassword="{x:Null}" ConsumerKey="{x:Null}" ConsumerSecret="{x:Null}" FileAttachments="{x:Null}" OAuth1Token="{x:Null}" OAuth1TokenSecret="{x:Null}" OAuth2Token="{x:Null}" Password="{x:Null}" ResourcePath="{x:Null}" ResponseAttachment="{x:Null}" ResponseHeaders="{x:Null}" SecureClientCertificatePassword="{x:Null}" SecurePassword="{x:Null}" Username="{x:Null}" AcceptFormat="ANY" AuthenticationType="None" Body="[v_Body]" BodyFormat="application/json" ContinueOnError="True" DisplayName="S7 POST /score" EnableSSLVerification="True" EndPoint="[v_Base + &quot;/score&quot;]" sap:VirtualizedContainerService.HintSize="452,104" sap2010:WorkflowViewState.IdRef="HttpClient_3" Method="POST" Result="[v_Resp]" StatusCode="[v_StatusCode]" TimeoutMS="30000">
       <ui:HttpClient.Attachments>
         <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
       </ui:HttpClient.Attachments>
@@ -224,7 +196,7 @@
         <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
       </ui:HttpClient.UrlSegments>
     </ui:HttpClient>
-    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S7 Parse response" sap2010:WorkflowViewState.IdRef="If_3">
+    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S7 Parse response" sap:VirtualizedContainerService.HintSize="452,202" sap2010:WorkflowViewState.IdRef="If_3">
       <If.Then>
         <Sequence DisplayName="S7 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_3">
           <Assign DisplayName="S7 Extract RiskScore" sap2010:WorkflowViewState.IdRef="Assign_11">
@@ -258,7 +230,7 @@
         <WriteLine DisplayName="[Log] S7 error" sap2010:WorkflowViewState.IdRef="WriteLine_7" Text="[&quot;[Stage7] ERROR: &quot; + v_Resp]" />
       </If.Else>
     </If>
-    <Assign DisplayName="S9 Build request body" sap2010:WorkflowViewState.IdRef="Assign_14">
+    <Assign DisplayName="S9 Build request body" sap:VirtualizedContainerService.HintSize="452,176.66666666666666" sap2010:WorkflowViewState.IdRef="Assign_14">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[v_Body]</OutArgument>
       </Assign.To>
@@ -266,18 +238,7 @@
         <InArgument x:TypeArguments="x:String">[String.Format("{{""child_id"":""{0}"",""child_name"":""{1}"",""dob"":""{2}"",""parent_name"":""{3}"",""clinic_name"":""{4}"",""district"":""{5}"",""abha_id"":""NOT-REGISTERED"",""vaccines"":[]}}", in_CaseID, in_ChildName, in_ChildDOB, in_ParentName, in_ClinicName, in_District)]</InArgument>
       </Assign.Value>
     </Assign>
-    <ui:HttpClient DisplayName="S9 POST /generate"
-        EndPoint="[v_Base + &quot;/generate&quot;]"
-        Method="POST"
-        Body="[v_Body]"
-        BodyFormat="application/json"
-        AcceptFormat="ANY"
-        AuthenticationType="None"
-        EnableSSLVerification="True"
-        TimeoutMS="30000"
-        ContinueOnError="True"
-        Result="[v_Resp]"
-        StatusCode="[v_StatusCode]">
+    <ui:HttpClient ClientCertificate="{x:Null}" ClientCertificatePassword="{x:Null}" ConsumerKey="{x:Null}" ConsumerSecret="{x:Null}" FileAttachments="{x:Null}" OAuth1Token="{x:Null}" OAuth1TokenSecret="{x:Null}" OAuth2Token="{x:Null}" Password="{x:Null}" ResourcePath="{x:Null}" ResponseAttachment="{x:Null}" ResponseHeaders="{x:Null}" SecureClientCertificatePassword="{x:Null}" SecurePassword="{x:Null}" Username="{x:Null}" AcceptFormat="ANY" AuthenticationType="None" Body="[v_Body]" BodyFormat="application/json" ContinueOnError="True" DisplayName="S9 POST /generate" EnableSSLVerification="True" EndPoint="[v_Base + &quot;/generate&quot;]" sap:VirtualizedContainerService.HintSize="452,104" sap2010:WorkflowViewState.IdRef="HttpClient_4" Method="POST" Result="[v_Resp]" StatusCode="[v_StatusCode]" TimeoutMS="30000">
       <ui:HttpClient.Attachments>
         <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
       </ui:HttpClient.Attachments>
@@ -294,7 +255,7 @@
         <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
       </ui:HttpClient.UrlSegments>
     </ui:HttpClient>
-    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S9 Parse response" sap2010:WorkflowViewState.IdRef="If_4">
+    <If Condition="[v_StatusCode &gt;= 200 AndAlso v_StatusCode &lt; 300]" DisplayName="S9 Parse response" sap:VirtualizedContainerService.HintSize="452,202" sap2010:WorkflowViewState.IdRef="If_4">
       <If.Then>
         <Sequence DisplayName="S9 Extract fields" sap2010:WorkflowViewState.IdRef="Sequence_4">
           <Assign DisplayName="S9 Extract CertPath" sap2010:WorkflowViewState.IdRef="Assign_16">
@@ -312,7 +273,7 @@
         <WriteLine DisplayName="[Log] S9 error" sap2010:WorkflowViewState.IdRef="WriteLine_9" Text="[&quot;[Stage9] ERROR: &quot; + v_Resp]" />
       </If.Else>
     </If>
-    <WriteLine DisplayName="[Log] Case complete" sap2010:WorkflowViewState.IdRef="WriteLine_10" Text="[&quot;[VacciCare] COMPLETE Case: &quot; + in_CaseID + &quot; Vaccine: &quot; + v_NextVaccine + &quot; Risk: &quot; + v_RiskLabel + &quot; Cert: &quot; + v_CertPath]" />
+    <WriteLine DisplayName="[Log] Case complete" sap:VirtualizedContainerService.HintSize="452,124" sap2010:WorkflowViewState.IdRef="WriteLine_10" Text="[&quot;[VacciCare] COMPLETE Case: &quot; + in_CaseID + &quot; Vaccine: &quot; + v_NextVaccine + &quot; Risk: &quot; + v_RiskLabel + &quot; Cert: &quot; + v_CertPath]" />
     <Assign DisplayName="Set out_NextVaccine" sap2010:WorkflowViewState.IdRef="Assign_17">
       <Assign.To>
         <OutArgument x:TypeArguments="x:String">[out_NextVaccine]</OutArgument>
